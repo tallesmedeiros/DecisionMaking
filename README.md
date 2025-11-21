@@ -13,6 +13,22 @@ A comprehensive Python-based software for creating personalized running training
 - **Interactive CLI**: User-friendly command-line interface
 - **Date Planning**: Set start dates and calculate race dates
 
+### 🆕 Advanced Features (NEW!)
+
+- **Training Zones Calculator**: Personalized pace zones based on recent race times
+  - Jack Daniels VDOT method (VO2max based)
+  - Critical Velocity method
+- **Detailed Workout Structure**: Each session includes:
+  - Specific target pace for the workout
+  - Estimated total time
+  - Warmup segment with pace and duration
+  - Main work intervals with repetitions
+  - Recovery periods between intervals
+  - Cooldown segment
+- **5 Training Zones**: Easy, Marathon, Threshold, Interval, Repetition
+- **Personalized Paces**: Based on your 5K, 10K, Half Marathon, or Marathon times
+- **Backward Compatible**: Works with or without training zones
+
 ## Installation
 
 1. Clone this repository:
@@ -63,7 +79,7 @@ python cli.py view my_plan.json
 
 ## Usage Examples
 
-### Creating a Custom Plan
+### Basic Plan Creation
 
 ```bash
 python cli.py
@@ -78,15 +94,63 @@ Then follow the prompts:
 - Set training days per week
 - Optionally set start date
 
-### Using Python API
+### 🆕 Advanced: Plan with Training Zones
 
-You can also use the modules directly in your own Python scripts:
+Create a personalized plan with pace-based workouts:
+
+```bash
+python example_with_zones.py
+```
+
+Or use the Python API:
+
+```python
+from training_zones import TrainingZones, RaceTime
+from plan_generator import PlanGenerator
+from datetime import datetime
+
+# 1. Setup training zones based on recent race times
+zones = TrainingZones(method='jack_daniels')  # or 'critical_velocity'
+
+# Add your recent race times (format: "MM:SS" or "HH:MM:SS")
+race_5k = RaceTime.from_time_string(5.0, "22:30")   # 5K in 22:30
+race_10k = RaceTime.from_time_string(10.0, "47:15")  # 10K in 47:15
+
+zones.add_race_time("5K Recent", race_5k)
+zones.add_race_time("10K Recent", race_10k)
+zones.calculate_zones()
+
+# View your training zones
+print(zones)  # Shows VDOT and pace ranges for each zone
+
+# 2. Generate plan WITH training zones
+plan = PlanGenerator.generate_plan(
+    name="My 10K Plan with Zones",
+    goal="10K",
+    level="intermediate",
+    weeks=10,
+    days_per_week=4,
+    training_zones=zones  # Pass zones here!
+)
+
+plan.set_start_date(datetime(2025, 1, 6))
+
+# 3. View detailed workout
+week4 = plan.get_week(4)
+for workout in week4.workouts:
+    print(workout)  # Shows pace, time, and detailed structure
+
+# 4. Save the plan
+plan.save_to_file("my_plan_with_zones.json")
+```
+
+### Basic API Usage (Without Zones)
 
 ```python
 from plan_generator import PlanGenerator
 from datetime import datetime
 
-# Generate a plan
+# Generate a basic plan
 plan = PlanGenerator.generate_plan(
     name="My Marathon Training",
     goal="Marathon",
@@ -142,14 +206,19 @@ Base weekly mileage varies by goal and level:
 ```
 DecisionMaking/
 ├── cli.py                        # Command-line interface
-├── running_plan.py               # Core classes (RunningPlan, Week, Workout)
+├── running_plan.py               # Core classes (RunningPlan, Week, Workout, WorkoutSegment)
 ├── plan_generator.py             # Training plan generation logic
+├── training_zones.py             # Training zones calculator (VDOT & Critical Velocity)
 ├── running_plan_creator.ipynb    # Jupyter Notebook (interactive tutorial)
-├── test_example.py               # Test and demonstration script
+├── test_example.py               # Basic test and demonstration script
+├── test_enhanced.py              # Advanced features test script
+├── example_with_zones.py         # Example usage with training zones
 └── README.md                     # This file
 ```
 
 ## Example Output
+
+### Basic Plan (Without Zones)
 
 ```
 ==================================================
@@ -180,6 +249,50 @@ Saturday: Rest
   Recovery day
 Sunday: Long Run - 7.2 km
   Build endurance at conversational pace
+```
+
+### 🆕 Advanced Plan (With Training Zones)
+
+```
+Training Zones (Method: jack_daniels)
+============================================================
+VDOT: 43.4
+
+Recent Race Times:
+  5K Recent: 5.0km in 22:30 (4:30/km)
+  10K Recent: 10.0km in 47:15 (4:43/km)
+
+Training Zones (pace per km):
+  Easy/Recovery       : 5:28 - 6:33
+  Marathon Pace       : 4:57 - 5:25
+  Threshold/Tempo     : 4:46 - 5:00
+  Interval/5K         : 4:18 - 4:29
+  Repetition/Fast     : 3:42 - 4:08
+
+----------------------------------------------------------------------
+SEMANA 4 - Com Treinos de Qualidade
+----------------------------------------------------------------------
+
+Tuesday: Easy Run - 8.0 km (48:23) @ 6:01/km [EASY]
+  Ritmo confortável, esforço conversacional
+
+Thursday: Interval Training - 7.1 km (31:04) @ 4:23/km [INTERVAL]
+  Treino de velocidade: tiros em ritmo de 5K
+  Estrutura do Treino:
+  • Aquecimento: 1.4 km, 8 min, @ 6:01/km
+    Preparação com ritmo fácil
+  • 4x Tiro (Intervalo Rápido): 0.62 km, 2 min, @ 4:23/km
+    Ritmo de 5K - esforço intenso
+  • 4x Recuperação (trote/caminhada): 2 min, @ 6:01/km
+    Recuperação ativa entre tiros
+  • Desaquecimento: 1.4 km, 8 min, @ 6:01/km
+    Volta à calma
+
+Friday: Easy Run - 5.8 km (34:50) @ 6:01/km [EASY]
+  Ritmo confortável, esforço conversacional
+
+Sunday: Long Run - 11.2 km (1:13:48) @ 6:33/km [EASY]
+  Construir resistência em ritmo fácil
 ```
 
 ## Tips for Success
