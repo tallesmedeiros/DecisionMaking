@@ -2,8 +2,9 @@
 Plan Generator module for creating training schedules.
 Generates running plans based on goal, level, and duration.
 """
-from running_plan import RunningPlan, Week, Workout
-from typing import List
+from running_plan import RunningPlan, Week, Workout, WorkoutSegment
+from training_zones import TrainingZones
+from typing import List, Optional
 
 
 class PlanGenerator:
@@ -26,7 +27,8 @@ class PlanGenerator:
         goal: str,
         level: str,
         weeks: int = None,
-        days_per_week: int = 4
+        days_per_week: int = 4,
+        training_zones: Optional[TrainingZones] = None
     ) -> RunningPlan:
         """
         Generate a complete running plan.
@@ -37,6 +39,7 @@ class PlanGenerator:
             level: Training level ("beginner", "intermediate", "advanced")
             weeks: Number of weeks (default based on goal)
             days_per_week: Number of running days per week
+            training_zones: Optional TrainingZones object for pace-based workouts
 
         Returns:
             A complete RunningPlan object
@@ -49,7 +52,7 @@ class PlanGenerator:
 
         # Generate weekly schedule
         for week_num in range(1, weeks + 1):
-            week = cls._generate_week(week_num, goal, level, weeks, days_per_week)
+            week = cls._generate_week(week_num, goal, level, weeks, days_per_week, training_zones)
             plan.add_week(week)
 
         return plan
@@ -72,7 +75,8 @@ class PlanGenerator:
         goal: str,
         level: str,
         total_weeks: int,
-        days_per_week: int
+        days_per_week: int,
+        training_zones: Optional[TrainingZones] = None
     ) -> Week:
         """Generate a single week of training."""
         workouts = []
@@ -91,13 +95,13 @@ class PlanGenerator:
 
         # Distribute workouts across the week
         if days_per_week == 3:
-            workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks)
+            workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks, training_zones)
         elif days_per_week == 4:
-            workouts = cls._generate_4_day_week(week_number, weekly_distance, level, total_weeks)
+            workouts = cls._generate_4_day_week(week_number, weekly_distance, level, total_weeks, training_zones)
         elif days_per_week == 5:
-            workouts = cls._generate_5_day_week(week_number, weekly_distance, level, total_weeks)
+            workouts = cls._generate_5_day_week(week_number, weekly_distance, level, total_weeks, training_zones)
         elif days_per_week == 6:
-            workouts = cls._generate_6_day_week(week_number, weekly_distance, level, total_weeks)
+            workouts = cls._generate_6_day_week(week_number, weekly_distance, level, total_weeks, training_zones)
         else:
             raise ValueError(f"Unsupported days_per_week: {days_per_week}")
 
@@ -117,115 +121,286 @@ class PlanGenerator:
         return week
 
     @classmethod
-    def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int) -> List[Workout]:
+    def _create_easy_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
+        """Create an easy run workout with optional pace details."""
+        workout = Workout(
+            day=day,
+            type="Easy Run",
+            distance_km=round(distance_km, 1),
+            description="Ritmo confortável, esforço conversacional",
+            training_zone="easy"
+        )
+
+        if training_zones:
+            pace = training_zones.get_zone_pace_str('easy', 'middle')
+            workout.target_pace = pace
+            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'middle'))
+            workout.total_time_estimated = training_zones.get_time_str(total_time)
+
+        return workout
+
+    @classmethod
+    def _create_long_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
+        """Create a long run workout with optional pace details."""
+        workout = Workout(
+            day=day,
+            type="Long Run",
+            distance_km=round(distance_km, 1),
+            description="Construir resistência em ritmo fácil",
+            training_zone="easy"
+        )
+
+        if training_zones:
+            pace = training_zones.get_zone_pace_str('easy', 'max')  # Slower end of easy
+            workout.target_pace = pace
+            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'max'))
+            workout.total_time_estimated = training_zones.get_time_str(total_time)
+
+        return workout
+
+    @classmethod
+    def _create_tempo_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
+        """Create a tempo run with detailed structure."""
+        workout = Workout(
+            day=day,
+            type="Tempo Run",
+            distance_km=round(distance_km, 1),
+            description="Esforço sustentado em ritmo de limiar",
+            training_zone="threshold"
+        )
+
+        if training_zones:
+            # Warmup: 15-20% of distance
+            warmup_km = round(distance_km * 0.18, 1)
+            warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            # Tempo portion: 60% of distance
+            tempo_km = round(distance_km * 0.60, 1)
+            tempo_pace = training_zones.get_zone_pace_str('threshold', 'middle')
+            tempo_time = training_zones.get_time_for_distance(tempo_km, training_zones.get_zone_pace('threshold', 'middle')) // 60
+
+            # Cooldown: remaining distance
+            cooldown_km = round(distance_km - warmup_km - tempo_km, 1)
+            cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            workout.target_pace = tempo_pace
+
+            # Add segments
+            workout.add_segment(WorkoutSegment(
+                name="Aquecimento",
+                distance_km=warmup_km,
+                duration_minutes=warmup_time,
+                pace_per_km=warmup_pace,
+                description="Ritmo fácil para preparar o corpo"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Tempo (Limiar)",
+                distance_km=tempo_km,
+                duration_minutes=tempo_time,
+                pace_per_km=tempo_pace,
+                description="Ritmo de limiar - esforço controlado e sustentado"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Desaquecimento",
+                distance_km=cooldown_km,
+                duration_minutes=cooldown_time,
+                pace_per_km=cooldown_pace,
+                description="Ritmo fácil para recuperação"
+            ))
+
+            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('threshold', 'middle'))
+            workout.total_time_estimated = training_zones.get_time_str(total_time)
+
+        return workout
+
+    @classmethod
+    def _create_interval_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
+        """Create an interval workout with detailed structure."""
+        workout = Workout(
+            day=day,
+            type="Interval Training",
+            distance_km=round(distance_km, 1),
+            description="Treino de velocidade: tiros em ritmo de 5K",
+            training_zone="interval"
+        )
+
+        if training_zones:
+            # Warmup: 20% of distance
+            warmup_km = round(distance_km * 0.20, 1)
+            warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            # Intervals: 60% of distance (divided into work + recovery)
+            interval_total_km = distance_km * 0.60
+            # Work intervals: 400m-1000m repeats
+            work_km = round(interval_total_km * 0.60, 1)  # 60% hard, 40% recovery
+            recovery_km = round(interval_total_km * 0.40, 1)
+
+            interval_pace = training_zones.get_zone_pace_str('interval', 'middle')
+            recovery_pace = training_zones.get_zone_pace_str('easy', 'middle')
+
+            # Estimate 4-6 repeats
+            num_repeats = max(4, min(8, int(work_km / 0.8)))
+            work_per_repeat = round(work_km / num_repeats, 2)
+
+            work_time_per = training_zones.get_time_for_distance(work_per_repeat, training_zones.get_zone_pace('interval', 'middle')) // 60
+            recovery_time_per = 2  # 2 minutes recovery
+
+            # Cooldown
+            cooldown_km = round(distance_km - warmup_km - interval_total_km, 1)
+            cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            workout.target_pace = interval_pace
+
+            # Add segments
+            workout.add_segment(WorkoutSegment(
+                name="Aquecimento",
+                distance_km=warmup_km,
+                duration_minutes=warmup_time,
+                pace_per_km=warmup_pace,
+                description="Preparação com ritmo fácil"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Tiro (Intervalo Rápido)",
+                distance_km=work_per_repeat,
+                duration_minutes=work_time_per,
+                pace_per_km=interval_pace,
+                repetitions=num_repeats,
+                description="Ritmo de 5K - esforço intenso"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Recuperação (trote/caminhada)",
+                duration_minutes=recovery_time_per,
+                pace_per_km=recovery_pace,
+                repetitions=num_repeats,
+                description="Recuperação ativa entre tiros"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Desaquecimento",
+                distance_km=cooldown_km,
+                duration_minutes=cooldown_time,
+                pace_per_km=cooldown_pace,
+                description="Volta à calma"
+            ))
+
+            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('interval', 'middle'))
+            workout.total_time_estimated = training_zones.get_time_str(total_time)
+
+        return workout
+
+    @classmethod
+    def _create_fartlek_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
+        """Create a fartlek workout with structure."""
+        workout = Workout(
+            day=day,
+            type="Fartlek",
+            distance_km=round(distance_km, 1),
+            description="Jogo de ritmos: alterne velocidades livremente",
+            training_zone="threshold"
+        )
+
+        if training_zones:
+            pace = training_zones.get_zone_pace_str('threshold', 'middle')
+            workout.target_pace = f"{training_zones.get_zone_pace_str('easy')} - {training_zones.get_zone_pace_str('interval')}"
+
+            # Structure for fartlek
+            warmup_km = round(distance_km * 0.20, 1)
+            fartlek_km = round(distance_km * 0.65, 1)
+            cooldown_km = round(distance_km - warmup_km - fartlek_km, 1)
+
+            workout.add_segment(WorkoutSegment(
+                name="Aquecimento",
+                distance_km=warmup_km,
+                pace_per_km=training_zones.get_zone_pace_str('easy'),
+                description="Começar devagar"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Fartlek (variações de ritmo)",
+                distance_km=fartlek_km,
+                description=f"Alterne: 1-3 min rápido ({training_zones.get_zone_pace_str('interval')}) + 1-2 min fácil ({training_zones.get_zone_pace_str('easy')})"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Desaquecimento",
+                distance_km=cooldown_km,
+                pace_per_km=training_zones.get_zone_pace_str('easy'),
+                description="Finalizar com calma"
+            ))
+
+            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'max'))
+            workout.total_time_estimated = training_zones.get_time_str(total_time)
+
+        return workout
+
+    @classmethod
+    def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int, training_zones: Optional[TrainingZones] = None) -> List[Workout]:
         """Generate workouts for a 3-day training week."""
         workouts = []
 
         # Easy run
         easy_distance = weekly_distance * 0.3
-        workouts.append(Workout(
-            day="Tuesday",
-            type="Easy Run",
-            distance_km=round(easy_distance, 1),
-            description="Comfortable pace, conversational effort"
-        ))
+        workouts.append(cls._create_easy_run("Tuesday", easy_distance, training_zones))
 
         # Tempo or interval
         quality_distance = weekly_distance * 0.25
         if week_num <= 3:
-            workouts.append(Workout(
-                day="Thursday",
-                type="Easy Run",
-                distance_km=round(quality_distance, 1),
-                description="Build your aerobic base"
-            ))
+            workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
         else:
-            workouts.append(Workout(
-                day="Thursday",
-                type="Tempo Run",
-                distance_km=round(quality_distance, 1),
-                description="Comfortably hard pace for middle miles"
-            ))
+            workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
 
         # Long run
         long_distance = weekly_distance * 0.45
-        workouts.append(Workout(
-            day="Saturday",
-            type="Long Run",
-            distance_km=round(long_distance, 1),
-            description="Build endurance at easy pace"
-        ))
+        workouts.append(cls._create_long_run("Saturday", long_distance, training_zones))
 
         # Add rest days
         for day in ["Monday", "Wednesday", "Friday", "Sunday"]:
-            workouts.append(Workout(day=day, type="Rest", description="Recovery day"))
+            workouts.append(Workout(day=day, type="Rest", description="Dia de recuperação"))
 
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int) -> List[Workout]:
+    def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int, training_zones: Optional[TrainingZones] = None) -> List[Workout]:
         """Generate workouts for a 4-day training week."""
         workouts = []
 
         # Easy run 1
         easy_distance_1 = weekly_distance * 0.25
-        workouts.append(Workout(
-            day="Tuesday",
-            type="Easy Run",
-            distance_km=round(easy_distance_1, 1),
-            description="Comfortable pace, conversational effort"
-        ))
+        workouts.append(cls._create_easy_run("Tuesday", easy_distance_1, training_zones))
 
         # Tempo, intervals, or easy depending on week
         quality_distance = weekly_distance * 0.22
         if week_num <= 2:
-            workouts.append(Workout(
-                day="Thursday",
-                type="Easy Run",
-                distance_km=round(quality_distance, 1),
-                description="Build your aerobic base"
-            ))
+            workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
         elif week_num % 2 == 0:
-            workouts.append(Workout(
-                day="Thursday",
-                type="Interval Training",
-                distance_km=round(quality_distance, 1),
-                description="Speed work: warm up, intervals at 5K pace, cool down"
-            ))
+            workouts.append(cls._create_interval_run("Thursday", quality_distance, training_zones))
         else:
-            workouts.append(Workout(
-                day="Thursday",
-                type="Tempo Run",
-                distance_km=round(quality_distance, 1),
-                description="Sustained effort at comfortably hard pace"
-            ))
+            workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
 
         # Easy run 2
         easy_distance_2 = weekly_distance * 0.18
-        workouts.append(Workout(
-            day="Friday",
-            type="Easy Run",
-            distance_km=round(easy_distance_2, 1),
-            description="Short recovery run at easy pace"
-        ))
+        workouts.append(cls._create_easy_run("Friday", easy_distance_2, training_zones))
 
         # Long run
         long_distance = weekly_distance * 0.35
-        workouts.append(Workout(
-            day="Sunday",
-            type="Long Run",
-            distance_km=round(long_distance, 1),
-            description="Build endurance at easy pace"
-        ))
+        workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
 
         # Add rest days
         for day in ["Monday", "Wednesday", "Saturday"]:
-            workouts.append(Workout(day=day, type="Rest", description="Recovery day"))
+            workouts.append(Workout(day=day, type="Rest", description="Dia de recuperação"))
 
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int) -> List[Workout]:
+    def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int, training_zones: Optional[TrainingZones] = None) -> List[Workout]:
         """Generate workouts for a 5-day training week."""
         workouts = []
 
@@ -238,60 +413,28 @@ class PlanGenerator:
             "long": weekly_distance * 0.27
         }
 
-        workouts.append(Workout(
-            day="Monday",
-            type="Easy Run",
-            distance_km=round(distances["easy1"], 1),
-            description="Start week with comfortable pace"
-        ))
-
-        workouts.append(Workout(
-            day="Tuesday",
-            type="Easy Run",
-            distance_km=round(distances["easy2"], 1),
-            description="Recovery pace"
-        ))
+        workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
+        workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
 
         # Quality workout
         if week_num <= 2:
-            workout_type = "Easy Run"
-            description = "Build aerobic base"
+            workouts.append(cls._create_easy_run("Thursday", distances["quality"], training_zones))
         elif week_num % 2 == 0:
-            workout_type = "Interval Training"
-            description = "Speed work: 400m-800m repeats at 5K pace"
+            workouts.append(cls._create_interval_run("Thursday", distances["quality"], training_zones))
         else:
-            workout_type = "Tempo Run"
-            description = "Sustained effort at threshold pace"
+            workouts.append(cls._create_tempo_run("Thursday", distances["quality"], training_zones))
 
-        workouts.append(Workout(
-            day="Thursday",
-            type=workout_type,
-            distance_km=round(distances["quality"], 1),
-            description=description
-        ))
-
-        workouts.append(Workout(
-            day="Friday",
-            type="Easy Run",
-            distance_km=round(distances["easy3"], 1),
-            description="Short recovery run"
-        ))
-
-        workouts.append(Workout(
-            day="Sunday",
-            type="Long Run",
-            distance_km=round(distances["long"], 1),
-            description="Build endurance at conversational pace"
-        ))
+        workouts.append(cls._create_easy_run("Friday", distances["easy3"], training_zones))
+        workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
 
         # Rest days
         for day in ["Wednesday", "Saturday"]:
-            workouts.append(Workout(day=day, type="Rest", description="Recovery day"))
+            workouts.append(Workout(day=day, type="Rest", description="Dia de recuperação"))
 
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int) -> List[Workout]:
+    def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int, training_zones: Optional[TrainingZones] = None) -> List[Workout]:
         """Generate workouts for a 6-day training week."""
         workouts = []
 
@@ -305,63 +448,24 @@ class PlanGenerator:
             "long": weekly_distance * 0.22
         }
 
-        workouts.append(Workout(
-            day="Monday",
-            type="Easy Run",
-            distance_km=round(distances["easy1"], 1),
-            description="Start week at comfortable pace"
-        ))
-
-        workouts.append(Workout(
-            day="Tuesday",
-            type="Easy Run",
-            distance_km=round(distances["easy2"], 1),
-            description="Easy aerobic pace"
-        ))
+        workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
+        workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
 
         # Quality workout
         if week_num <= 2:
-            workout_type = "Easy Run"
-            description = "Building base fitness"
+            workouts.append(cls._create_easy_run("Wednesday", distances["quality"], training_zones))
         elif week_num % 3 == 0:
-            workout_type = "Fartlek"
-            description = "Play with pace: alternate fast/easy segments"
+            workouts.append(cls._create_fartlek_run("Wednesday", distances["quality"], training_zones))
         elif week_num % 3 == 1:
-            workout_type = "Interval Training"
-            description = "Track work: 400m-1000m repeats at 5K pace"
+            workouts.append(cls._create_interval_run("Wednesday", distances["quality"], training_zones))
         else:
-            workout_type = "Tempo Run"
-            description = "Sustained threshold effort"
+            workouts.append(cls._create_tempo_run("Wednesday", distances["quality"], training_zones))
 
-        workouts.append(Workout(
-            day="Wednesday",
-            type=workout_type,
-            distance_km=round(distances["quality"], 1),
-            description=description
-        ))
-
-        workouts.append(Workout(
-            day="Thursday",
-            type="Easy Run",
-            distance_km=round(distances["easy3"], 1),
-            description="Recovery run"
-        ))
-
-        workouts.append(Workout(
-            day="Friday",
-            type="Easy Run",
-            distance_km=round(distances["easy4"], 1),
-            description="Short easy run"
-        ))
-
-        workouts.append(Workout(
-            day="Sunday",
-            type="Long Run",
-            distance_km=round(distances["long"], 1),
-            description="Long endurance run at easy pace"
-        ))
+        workouts.append(cls._create_easy_run("Thursday", distances["easy3"], training_zones))
+        workouts.append(cls._create_easy_run("Friday", distances["easy4"], training_zones))
+        workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
 
         # One rest day
-        workouts.append(Workout(day="Saturday", type="Rest", description="Recovery day"))
+        workouts.append(Workout(day="Saturday", type="Rest", description="Dia de recuperação"))
 
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))

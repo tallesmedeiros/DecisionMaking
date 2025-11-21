@@ -5,26 +5,91 @@ Defines the main classes and data structures for running plans.
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+
+
+@dataclass
+class WorkoutSegment:
+    """Represents a segment of a workout (warmup, intervals, cooldown, etc)."""
+    name: str  # e.g., "Warmup", "Work Interval", "Recovery", "Cooldown"
+    distance_km: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    pace_per_km: Optional[str] = None  # Format: "MM:SS"
+    repetitions: int = 1
+    description: str = ""
+
+    def __str__(self):
+        result = f"  • {self.name}"
+        if self.repetitions > 1:
+            result = f"  • {self.repetitions}x {self.name}"
+
+        details = []
+        if self.distance_km:
+            details.append(f"{self.distance_km} km")
+        if self.duration_minutes:
+            details.append(f"{self.duration_minutes} min")
+        if self.pace_per_km:
+            details.append(f"@ {self.pace_per_km}/km")
+
+        if details:
+            result += f": {', '.join(details)}"
+
+        if self.description:
+            result += f"\n    {self.description}"
+
+        return result
 
 
 @dataclass
 class Workout:
-    """Represents a single workout session."""
+    """Represents a single workout session with detailed structure."""
     day: str
     type: str  # e.g., "Easy Run", "Long Run", "Interval", "Rest", "Cross Training"
     distance_km: Optional[float] = None
     duration_minutes: Optional[int] = None
     description: str = ""
 
+    # Enhanced fields for detailed workout structure
+    target_pace: Optional[str] = None  # Target pace for main work (MM:SS/km)
+    segments: List[WorkoutSegment] = field(default_factory=list)
+    total_time_estimated: Optional[str] = None  # HH:MM:SS or MM:SS
+
+    # Zone information
+    training_zone: Optional[str] = None  # e.g., "easy", "threshold", "interval"
+
+    def add_segment(self, segment: WorkoutSegment):
+        """Add a segment to the workout."""
+        self.segments.append(segment)
+
+    def has_detailed_structure(self) -> bool:
+        """Check if workout has detailed segment structure."""
+        return len(self.segments) > 0
+
     def __str__(self):
         result = f"{self.day}: {self.type}"
+
         if self.distance_km:
             result += f" - {self.distance_km} km"
-        if self.duration_minutes:
-            result += f" - {self.duration_minutes} min"
+        if self.total_time_estimated:
+            result += f" ({self.total_time_estimated})"
+        elif self.duration_minutes:
+            result += f" ({self.duration_minutes} min)"
+
+        if self.target_pace:
+            result += f" @ {self.target_pace}/km"
+
+        if self.training_zone:
+            result += f" [{self.training_zone.upper()}]"
+
         if self.description:
             result += f"\n  {self.description}"
+
+        # Show detailed segments if available
+        if self.has_detailed_structure():
+            result += "\n  Estrutura do Treino:"
+            for segment in self.segments:
+                result += "\n" + str(segment)
+
         return result
 
 
@@ -153,7 +218,15 @@ class RunningPlan:
 
         # Reconstruct schedule
         for week_data in data["schedule"]:
-            workouts = [Workout(**w) for w in week_data["workouts"]]
+            workouts = []
+            for w_data in week_data["workouts"]:
+                # Handle segments if they exist
+                segments_data = w_data.pop('segments', [])
+                segments = [WorkoutSegment(**s) for s in segments_data]
+                workout = Workout(**w_data)
+                workout.segments = segments
+                workouts.append(workout)
+
             week = Week(
                 week_number=week_data["week_number"],
                 workouts=workouts,
