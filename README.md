@@ -30,6 +30,19 @@ No additional dependencies required - uses only Python standard library!
 
 ## Quick Start
 
+### Jupyter Notebook (Recommended for Learning)
+For an interactive, educational experience with examples and visualizations:
+```bash
+jupyter notebook running_plan_creator.ipynb
+```
+
+The notebook includes:
+- 17 interactive sections with examples
+- Step-by-step tutorials in Portuguese
+- Visualization of training progression
+- Personalization guide
+- Training tips and best practices
+
 ### Interactive Mode
 Run the CLI in interactive mode for a guided experience:
 ```bash
@@ -128,10 +141,12 @@ Base weekly mileage varies by goal and level:
 
 ```
 DecisionMaking/
-├── cli.py              # Command-line interface
-├── running_plan.py     # Core classes (RunningPlan, Week, Workout)
-├── plan_generator.py   # Training plan generation logic
-└── README.md           # This file
+├── cli.py                        # Command-line interface
+├── running_plan.py               # Core classes (RunningPlan, Week, Workout)
+├── plan_generator.py             # Training plan generation logic
+├── running_plan_creator.ipynb    # Jupyter Notebook (interactive tutorial)
+├── test_example.py               # Test and demonstration script
+└── README.md                     # This file
 ```
 
 ## Example Output
