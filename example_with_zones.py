@@ -47,9 +47,20 @@ week4 = plan.get_week(4)
 for workout in week4.workouts:
     print(f"\n{workout}")
 
-# 4. Salvar o plano
+# 4. Visualizar formato visual compacto
+print("\n" + "="*70)
+print("FORMATO VISUAL COMPACTO")
+print("="*70)
+print(plan.to_visual_str())
+
+# 5. Salvar o plano
 filename = "meu_plano_10k_com_zonas.json"
 plan.save_to_file(filename)
 print(f"\n\n✓ Plano salvo em: {filename}")
 print(f"✓ Total de {plan.weeks} semanas")
 print(f"✓ Prova em: {plan.get_race_date().strftime('%d/%m/%Y')}")
+
+print("\n💡 Dicas:")
+print("  - Use plan.print_visual() para visualização compacta com emojis")
+print("  - Use plan.print_visual(show_all_weeks=True) para ver todas as semanas")
+print("  - Use plan.print_visual(week_range=(4, 6)) para semanas específicas")

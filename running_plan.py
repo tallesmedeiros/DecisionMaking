@@ -18,6 +18,58 @@ class WorkoutSegment:
     repetitions: int = 1
     description: str = ""
 
+    def to_compact_str(self) -> str:
+        """Return compact string representation for visual output."""
+        if "Aquecimento" in self.name or "Warmup" in self.name:
+            if self.distance_km:
+                return f"{self.distance_km}km aquec"
+            return "aquec"
+        elif "Desaquecimento" in self.name or "Cooldown" in self.name:
+            if self.distance_km:
+                return f"{self.distance_km}km volta calma"
+            return "volta calma"
+        elif "Recuperação" in self.name or "Recovery" in self.name:
+            if self.duration_minutes:
+                return f"{self.duration_minutes}min rec"
+            return "rec"
+        elif "Tiro" in self.name or "Interval" in self.name:
+            result = ""
+            if self.repetitions > 1:
+                result = f"{self.repetitions}x"
+            if self.distance_km:
+                # Convert to meters if less than 1km
+                if self.distance_km < 1:
+                    meters = int(self.distance_km * 1000)
+                    result += f"{meters}m"
+                else:
+                    result += f"{self.distance_km}km"
+            if self.pace_per_km:
+                result += f" @ {self.pace_per_km}/km"
+            if self.duration_minutes and not self.pace_per_km:
+                result += f" {self.duration_minutes}min"
+            if self.repetitions > 1 and self.duration_minutes:
+                result += f" c/ {self.duration_minutes}min rec"
+            return result
+        elif "Tempo" in self.name or "Limiar" in self.name:
+            result = ""
+            if self.distance_km:
+                result += f"{self.distance_km}km"
+            if self.pace_per_km:
+                result += f" @ {self.pace_per_km}/km"
+            return result
+        elif "Fartlek" in self.name:
+            if self.distance_km:
+                return f"{self.distance_km}km fartlek"
+            return "fartlek"
+        else:
+            # Generic format
+            result = ""
+            if self.distance_km:
+                result += f"{self.distance_km}km"
+            if self.pace_per_km:
+                result += f" @ {self.pace_per_km}/km"
+            return result if result else self.name
+
     def __str__(self):
         result = f"  • {self.name}"
         if self.repetitions > 1:
@@ -65,6 +117,75 @@ class Workout:
         """Check if workout has detailed segment structure."""
         return len(self.segments) > 0
 
+    def get_emoji(self) -> str:
+        """Get emoji for workout type."""
+        emoji_map = {
+            "Easy Run": "🟢",
+            "Long Run": "🟢",
+            "Tempo Run": "🟠",
+            "Interval Training": "🔴",
+            "Fartlek": "🟡",
+            "Rest": "😴",
+            "Cross Training": "🔵"
+        }
+        return emoji_map.get(self.type, "⚪")
+
+    def get_type_label(self) -> str:
+        """Get short label for workout type."""
+        label_map = {
+            "Easy Run": "Fácil",
+            "Long Run": "Longão",
+            "Tempo Run": "Tempo",
+            "Interval Training": "Intervalos",
+            "Fartlek": "Fartlek",
+            "Rest": "Descanso",
+            "Cross Training": "Cross"
+        }
+        return label_map.get(self.type, self.type)
+
+    def to_visual_str(self, date: Optional[datetime] = None) -> str:
+        """Return compact visual representation with emojis."""
+        if self.type == "Rest":
+            if date:
+                date_str = f"{self.day.capitalize()} ({date.strftime('%d/%m')})"
+                return f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}"
+            return f"  📍 {self.day}: {self.get_emoji()} {self.get_type_label()}"
+
+        # Build compact workout description
+        parts = []
+
+        if self.has_detailed_structure():
+            # Compact format with segments
+            for segment in self.segments:
+                compact = segment.to_compact_str()
+                if compact:
+                    parts.append(compact)
+            workout_desc = " + ".join(parts)
+        else:
+            # Simple format without segments
+            if self.distance_km:
+                workout_desc = f"{self.distance_km}km"
+            elif self.duration_minutes:
+                workout_desc = f"{self.duration_minutes}min"
+            else:
+                workout_desc = ""
+
+            if self.target_pace:
+                workout_desc += f" @ {self.target_pace}/km"
+
+        # Format with date if provided
+        if date:
+            date_str = f"{self.day.capitalize()} ({date.strftime('%d/%m')})"
+        else:
+            date_str = self.day
+
+        # Add time estimate if available
+        time_str = ""
+        if self.total_time_estimated:
+            time_str = f" [{self.total_time_estimated}]"
+
+        return f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}: {workout_desc}{time_str}"
+
     def __str__(self):
         result = f"{self.day}: {self.type}"
 
@@ -107,6 +228,44 @@ class Week:
             w.distance_km for w in self.workouts if w.distance_km
         ), 1)
         return self.total_distance_km
+
+    def to_visual_str(self, start_date: Optional[datetime] = None) -> str:
+        """Return compact visual representation of the week."""
+        self.calculate_total_distance()
+
+        # Calculate week start date if plan has a start date
+        week_start = None
+        if start_date:
+            # Week starts on a Monday (assuming plan starts on Monday)
+            days_offset = (self.week_number - 1) * 7
+            week_start = start_date + timedelta(days=days_offset)
+
+        # Header
+        result = f"\n{'='*70}\n"
+        result += f"📅 SEMANA {self.week_number}"
+        if week_start:
+            week_end = week_start + timedelta(days=6)
+            result += f" ({week_start.strftime('%d/%m')} a {week_end.strftime('%d/%m')})"
+        result += f" | 📏 {self.total_distance_km}km total\n"
+
+        if self.notes:
+            result += f"💡 {self.notes}\n"
+
+        result += f"{'='*70}\n"
+
+        # Workouts in visual format
+        days_map = {
+            "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+            "Friday": 4, "Saturday": 5, "Sunday": 6
+        }
+
+        for workout in self.workouts:
+            workout_date = None
+            if week_start and workout.day in days_map:
+                workout_date = week_start + timedelta(days=days_map[workout.day])
+            result += workout.to_visual_str(workout_date) + "\n"
+
+        return result
 
     def __str__(self):
         self.calculate_total_distance()
@@ -236,6 +395,66 @@ class RunningPlan:
             plan.add_week(week)
 
         return plan
+
+    def to_visual_str(self, show_all_weeks: bool = False, week_range: tuple = None) -> str:
+        """
+        Return visual representation of the plan.
+
+        Args:
+            show_all_weeks: If True, show all weeks. If False, show summary.
+            week_range: Tuple (start, end) to show specific week range.
+        """
+        result = f"\n{'='*70}\n"
+        result += f"🏃‍♂️ PLANO DE TREINO: {self.name}\n"
+        result += f"{'='*70}\n"
+        result += f"🎯 Meta: {self.goal}\n"
+        result += f"📊 Nível: {self.level.capitalize()}\n"
+        result += f"📅 Duração: {self.weeks} semanas\n"
+        result += f"🗓️  Dias de treino: {self.days_per_week} dias/semana\n"
+
+        if self.start_date:
+            result += f"🚀 Início: {self.start_date.strftime('%d/%m/%Y (%A)')}\n"
+            race_date = self.get_race_date()
+            if race_date:
+                result += f"🏁 Prova: {race_date.strftime('%d/%m/%Y (%A)')}\n"
+
+        # Calculate total distance
+        total_km = sum(w.total_distance_km for w in self.schedule)
+        result += f"📏 Kilometragem total: {total_km:.1f}km\n"
+        result += f"{'='*70}\n"
+
+        # Determine which weeks to show
+        if week_range:
+            start_week, end_week = week_range
+            weeks_to_show = [w for w in self.schedule if start_week <= w.week_number <= end_week]
+        elif show_all_weeks:
+            weeks_to_show = self.schedule
+        else:
+            # Show first 2, one from middle, and last 2 weeks as summary
+            if len(self.schedule) <= 5:
+                weeks_to_show = self.schedule
+            else:
+                middle_week = len(self.schedule) // 2
+                weeks_to_show = (
+                    self.schedule[:2] +
+                    [self.schedule[middle_week]] +
+                    self.schedule[-2:]
+                )
+
+        # Show weeks
+        for week in weeks_to_show:
+            result += week.to_visual_str(self.start_date)
+            result += "\n"
+
+        if not show_all_weeks and not week_range and len(self.schedule) > 5:
+            result += f"\n💡 Use .to_visual_str(show_all_weeks=True) para ver todas as semanas\n"
+            result += f"💡 Ou .to_visual_str(week_range=(3, 6)) para ver semanas específicas\n"
+
+        return result
+
+    def print_visual(self, **kwargs):
+        """Print visual representation of the plan."""
+        print(self.to_visual_str(**kwargs))
 
     def __str__(self):
         result = f"\n{'='*50}\n"
