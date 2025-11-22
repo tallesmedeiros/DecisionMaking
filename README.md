@@ -46,6 +46,34 @@ No additional dependencies required - uses only Python standard library!
 
 ## Quick Start
 
+### 🌐 Google Colab (Easiest - No Installation Required!)
+
+**Use o sistema direto no seu navegador sem instalar nada!**
+
+1. **Abra o notebook interativo no Google Colab:**
+   - [🚀 Clique aqui para abrir no Colab](https://colab.research.google.com/github/tallesmedeiros/DecisionMaking/blob/claude/build-basic-software-01X41XJpgLktdj8FhFWitNo3/create_plan_interactive.ipynb)
+
+2. **Execute a primeira célula para clonar os arquivos:**
+   ```python
+   !git clone https://github.com/tallesmedeiros/DecisionMaking.git
+   %cd DecisionMaking
+   ```
+
+3. **Preencha suas informações nas 12 seções interativas**
+
+4. **Receba seu plano personalizado!**
+
+📖 **[Ver guia completo em Português](GUIA_GOOGLE_COLAB.md)**
+
+**O que você recebe:**
+- ✅ Plano personalizado com base em seus dados (idade, peso, lesões, tempo disponível)
+- ✅ Zonas de treino calculadas automaticamente dos seus tempos de prova
+- ✅ Ajustes inteligentes para lesões e risco de lesão
+- ✅ Treinos limitados ao tempo que você tem disponível
+- ✅ Avisos e recomendações específicas para seu perfil
+
+---
+
 ### Jupyter Notebook (Recommended for Learning)
 For an interactive, educational experience with examples and visualizations:
 ```bash
