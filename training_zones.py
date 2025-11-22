@@ -301,3 +301,71 @@ class TrainingZones:
                 result += f"  {zone_label:20s}: {pace_range}\n"
 
         return result
+
+    def to_table(self) -> str:
+        """
+        Generate a visual table of training zones with emojis.
+        Returns a formatted string that can be printed.
+        """
+        # Zone emojis and metadata
+        zone_info = {
+            'easy': {
+                'emoji': '🟢',
+                'name': 'Easy/Recovery',
+                'hr_range': '65-75%',
+                'uso': 'Regeneração, base aeróbica'
+            },
+            'marathon': {
+                'emoji': '🔵',
+                'name': 'Marathon Pace',
+                'hr_range': '75-84%',
+                'uso': 'Resistência aeróbica'
+            },
+            'threshold': {
+                'emoji': '🟡',
+                'name': 'Threshold/Tempo',
+                'hr_range': '84-88%',
+                'uso': 'Limiar anaeróbico'
+            },
+            'interval': {
+                'emoji': '🟠',
+                'name': 'Interval/5K',
+                'hr_range': '95-98%',
+                'uso': 'VO2max'
+            },
+            'repetition': {
+                'emoji': '🔴',
+                'name': 'Repetition/Fast',
+                'hr_range': '98-100%',
+                'uso': 'Velocidade máxima'
+            }
+        }
+
+        result = "\n" + "="*80 + "\n"
+        result += "🏃‍♂️ SUAS ZONAS DE TREINAMENTO (JACK DANIELS)\n"
+        result += "="*80 + "\n\n"
+
+        if self.vdot:
+            result += f"💪 VDOT: {self.vdot:.1f}\n\n"
+
+        result += "┌" + "─"*78 + "┐\n"
+        result += f"│ {'Zona':<20} │ {'Emoji':<6} │ {'Pace/km':<14} │ {'% FCMax':<9} │ {'Uso':<20} │\n"
+        result += "├" + "─"*78 + "┤\n"
+
+        for zone_name in ['easy', 'marathon', 'threshold', 'interval', 'repetition']:
+            if zone_name in self.zones:
+                info = zone_info[zone_name]
+                pace_range = self.get_zone_pace_range_str(zone_name)
+
+                result += f"│ {info['emoji']} {info['name']:<17} │ {info['emoji']:<6} │ {pace_range:<14} │ {info['hr_range']:<9} │ {info['uso']:<20} │\n"
+
+        result += "└" + "─"*78 + "┘\n"
+
+        result += "\n💡 Dicas de uso:\n"
+        result += "  • 🟢 Easy: 70-80% do volume semanal\n"
+        result += "  • 🔵 Marathon: Treinos longos e ritmo de prova\n"
+        result += "  • 🟡 Threshold: 1-2x por semana, máx 60min total\n"
+        result += "  • 🟠 Interval: 1x por semana, séries curtas\n"
+        result += "  • 🔴 Repetition: Ocasional, velocidade pura\n\n"
+
+        return result

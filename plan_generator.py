@@ -2,7 +2,7 @@
 Plan Generator module for creating training schedules.
 Generates running plans based on goal, level, and duration.
 """
-from running_plan import RunningPlan, Week, Workout, WorkoutSegment
+from running_plan import RunningPlan, Week, Workout, WorkoutSegment, round_to_nearest_5km, round_to_nearest_30min
 from training_zones import TrainingZones, RaceTime
 from typing import List, Optional, Tuple, TYPE_CHECKING
 from datetime import timedelta
@@ -248,6 +248,9 @@ class PlanGenerator:
                 taper_factor = 0.7 if week_number == total_weeks - 1 else 0.5
                 weekly_distance = target_distance * taper_factor
 
+        # Round weekly distance to nearest 5km
+        weekly_distance = round_to_nearest_5km(weekly_distance)
+
         # Distribute workouts across the week
         if days_per_week == 3:
             workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks, training_zones)
@@ -328,10 +331,12 @@ class PlanGenerator:
     @classmethod
     def _create_easy_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """Create an easy run workout with optional pace details."""
+        # Round to nearest 5km
+        rounded_distance = round_to_nearest_5km(distance_km)
         workout = Workout(
             day=day,
             type="Easy Run",
-            distance_km=round(distance_km, 1),
+            distance_km=rounded_distance,
             description="Ritmo confortável, esforço conversacional",
             training_zone="easy"
         )
@@ -339,18 +344,21 @@ class PlanGenerator:
         if training_zones:
             pace = training_zones.get_zone_pace_str('easy', 'middle')
             workout.target_pace = pace
-            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'middle'))
-            workout.total_time_estimated = training_zones.get_time_str(total_time)
+            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('easy', 'middle'))
+            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60  # Convert to minutes, round, back to seconds
+            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
         return workout
 
     @classmethod
     def _create_long_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """Create a long run workout with optional pace details."""
+        # Round to nearest 5km
+        rounded_distance = round_to_nearest_5km(distance_km)
         workout = Workout(
             day=day,
             type="Long Run",
-            distance_km=round(distance_km, 1),
+            distance_km=rounded_distance,
             description="Construir resistência em ritmo fácil",
             training_zone="easy"
         )
@@ -358,35 +366,38 @@ class PlanGenerator:
         if training_zones:
             pace = training_zones.get_zone_pace_str('easy', 'max')  # Slower end of easy
             workout.target_pace = pace
-            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'max'))
-            workout.total_time_estimated = training_zones.get_time_str(total_time)
+            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('easy', 'max'))
+            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60  # Convert to minutes, round, back to seconds
+            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
         return workout
 
     @classmethod
     def _create_tempo_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """Create a tempo run with detailed structure."""
+        # Round to nearest 5km
+        rounded_distance = round_to_nearest_5km(distance_km)
         workout = Workout(
             day=day,
             type="Tempo Run",
-            distance_km=round(distance_km, 1),
+            distance_km=rounded_distance,
             description="Esforço sustentado em ritmo de limiar",
             training_zone="threshold"
         )
 
         if training_zones:
             # Warmup: 15-20% of distance
-            warmup_km = round(distance_km * 0.18, 1)
+            warmup_km = round(rounded_distance * 0.18, 1)
             warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
             warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
 
             # Tempo portion: 60% of distance
-            tempo_km = round(distance_km * 0.60, 1)
+            tempo_km = round(rounded_distance * 0.60, 1)
             tempo_pace = training_zones.get_zone_pace_str('threshold', 'middle')
             tempo_time = training_zones.get_time_for_distance(tempo_km, training_zones.get_zone_pace('threshold', 'middle')) // 60
 
             # Cooldown: remaining distance
-            cooldown_km = round(distance_km - warmup_km - tempo_km, 1)
+            cooldown_km = round(rounded_distance - warmup_km - tempo_km, 1)
             cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
             cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
 
@@ -417,30 +428,33 @@ class PlanGenerator:
                 description="Ritmo fácil para recuperação"
             ))
 
-            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('threshold', 'middle'))
-            workout.total_time_estimated = training_zones.get_time_str(total_time)
+            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('threshold', 'middle'))
+            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60
+            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
         return workout
 
     @classmethod
     def _create_interval_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """Create an interval workout with detailed structure."""
+        # Round to nearest 5km
+        rounded_distance = round_to_nearest_5km(distance_km)
         workout = Workout(
             day=day,
             type="Interval Training",
-            distance_km=round(distance_km, 1),
+            distance_km=rounded_distance,
             description="Treino de velocidade: tiros em ritmo de 5K",
             training_zone="interval"
         )
 
         if training_zones:
             # Warmup: 20% of distance
-            warmup_km = round(distance_km * 0.20, 1)
+            warmup_km = round(rounded_distance * 0.20, 1)
             warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
             warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
 
             # Intervals: 60% of distance (divided into work + recovery)
-            interval_total_km = distance_km * 0.60
+            interval_total_km = rounded_distance * 0.60
             # Work intervals: 400m-1000m repeats
             work_km = round(interval_total_km * 0.60, 1)  # 60% hard, 40% recovery
             recovery_km = round(interval_total_km * 0.40, 1)
@@ -456,7 +470,7 @@ class PlanGenerator:
             recovery_time_per = 2  # 2 minutes recovery
 
             # Cooldown
-            cooldown_km = round(distance_km - warmup_km - interval_total_km, 1)
+            cooldown_km = round(rounded_distance - warmup_km - interval_total_km, 1)
             cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
             cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
 
@@ -496,18 +510,21 @@ class PlanGenerator:
                 description="Volta à calma"
             ))
 
-            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('interval', 'middle'))
-            workout.total_time_estimated = training_zones.get_time_str(total_time)
+            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('interval', 'middle'))
+            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60
+            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
         return workout
 
     @classmethod
     def _create_fartlek_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """Create a fartlek workout with structure."""
+        # Round to nearest 5km
+        rounded_distance = round_to_nearest_5km(distance_km)
         workout = Workout(
             day=day,
             type="Fartlek",
-            distance_km=round(distance_km, 1),
+            distance_km=rounded_distance,
             description="Jogo de ritmos: alterne velocidades livremente",
             training_zone="threshold"
         )
@@ -517,9 +534,9 @@ class PlanGenerator:
             workout.target_pace = f"{training_zones.get_zone_pace_str('easy')} - {training_zones.get_zone_pace_str('interval')}"
 
             # Structure for fartlek
-            warmup_km = round(distance_km * 0.20, 1)
-            fartlek_km = round(distance_km * 0.65, 1)
-            cooldown_km = round(distance_km - warmup_km - fartlek_km, 1)
+            warmup_km = round(rounded_distance * 0.20, 1)
+            fartlek_km = round(rounded_distance * 0.65, 1)
+            cooldown_km = round(rounded_distance - warmup_km - fartlek_km, 1)
 
             workout.add_segment(WorkoutSegment(
                 name="Aquecimento",
@@ -541,8 +558,9 @@ class PlanGenerator:
                 description="Finalizar com calma"
             ))
 
-            total_time = training_zones.get_time_for_distance(distance_km, training_zones.get_zone_pace('easy', 'max'))
-            workout.total_time_estimated = training_zones.get_time_str(total_time)
+            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('easy', 'max'))
+            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60
+            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
         return workout
 
