@@ -240,50 +240,121 @@ def export_plan_to_pdf(plan, filename: Optional[str] = None, include_graphs: boo
 
         # Notas da semana
         if week.notes:
-            elements.append(Paragraph(f"<i>{week.notes}</i>", normal_style))
+            elements.append(Paragraph(f"<i>💡 {week.notes}</i>", normal_style))
             elements.append(Spacer(1, 0.1*inch))
 
-        # Tabela de treinos
-        workout_data = [['Dia', 'Treino', 'Distância', 'Detalhes']]
+        # Dias da semana para calcular datas
+        days_map = {
+            "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+            "Friday": 4, "Saturday": 5, "Sunday": 6
+        }
 
+        # Estilo para treinos
+        workout_style = ParagraphStyle(
+            'WorkoutStyle',
+            parent=normal_style,
+            fontSize=9,
+            leftIndent=10,
+            spaceBefore=4,
+            spaceAfter=4
+        )
+
+        # Estilo para detalhes de segmentos
+        segment_style = ParagraphStyle(
+            'SegmentStyle',
+            parent=normal_style,
+            fontSize=8,
+            leftIndent=25,
+            textColor=colors.HexColor('#555555'),
+            spaceBefore=2,
+            spaceAfter=2
+        )
+
+        # Mostrar cada treino em formato visual (similar ao notebook)
         for workout in week.workouts:
-            dia = workout.day
-            tipo = workout.type
-            distancia = f"{workout.distance_km:.1f} km" if workout.distance_km else "-"
+            # Calcular data do treino
+            workout_date_str = ""
+            if plan.start_date and workout.day in days_map:
+                from datetime import timedelta
+                week_start = plan.start_date + timedelta(weeks=week.week_number - 1)
+                workout_date = week_start + timedelta(days=days_map[workout.day])
+                workout_date_str = f" ({workout_date.strftime('%d/%m')})"
 
-            # Detalhes
-            detalhes = []
-            if workout.target_pace:
-                detalhes.append(f"Pace: {workout.target_pace}")
-            if workout.total_time_estimated:
-                detalhes.append(f"Tempo: {workout.total_time_estimated}")
-            if workout.description:
-                detalhes.append(workout.description)
+            # Emoji do treino
+            emoji_map = {
+                "Easy Run": "🟢",
+                "Tempo Run": "🟡",
+                "Interval Training": "🟠",
+                "Fartlek": "🌈",
+                "Long Run": "🔵",
+                "Rest": "😴"
+            }
+            emoji = emoji_map.get(workout.type, "🏃")
 
-            detalhes_str = ", ".join(detalhes) if detalhes else "-"
+            # Formato base
+            if workout.type == "Rest":
+                workout_text = f"<b>📍 {workout.day}{workout_date_str}:</b> {emoji} Descanso"
+                elements.append(Paragraph(workout_text, workout_style))
+            else:
+                # Construir descrição detalhada do treino
+                if workout.has_detailed_structure():
+                    # Treino com estrutura detalhada (segmentos)
+                    parts = []
+                    for segment in workout.segments:
+                        compact = segment.to_compact_str()
+                        if compact:
+                            parts.append(compact)
+                    workout_desc = " + ".join(parts)
+                else:
+                    # Treino simples
+                    workout_desc = ""
+                    if workout.distance_km:
+                        workout_desc = f"{workout.distance_km:.1f}km"
 
-            workout_data.append([dia, tipo, distancia, detalhes_str])
+                    if workout.target_pace:
+                        workout_desc += f" @ {workout.target_pace}/km"
 
-        workout_table = Table(workout_data, colWidths=[0.9*inch, 1.5*inch, 0.9*inch, 3*inch])
-        workout_table.setStyle(TableStyle([
-            # Cabeçalho
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e8f4f8')),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            # Corpo
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('ALIGN', (0, 1), (2, -1), 'CENTER'),
-            ('ALIGN', (3, 1), (3, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            # Bordas
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ]))
+                # Tempo estimado
+                time_str = ""
+                if workout.total_time_estimated:
+                    time_str = f" [{workout.total_time_estimated}]"
 
-        elements.append(workout_table)
+                # Linha principal do treino
+                workout_text = f"<b>📍 {workout.day}{workout_date_str}:</b> {emoji} <b>{workout.type}</b>: {workout_desc}{time_str}"
+                elements.append(Paragraph(workout_text, workout_style))
+
+                # Mostrar descrição se disponível
+                if workout.description:
+                    desc_text = f"<i>{workout.description}</i>"
+                    elements.append(Paragraph(desc_text, segment_style))
+
+                # Mostrar detalhes dos segmentos se disponível
+                if workout.has_detailed_structure() and workout.segments:
+                    for segment in workout.segments:
+                        seg_details = []
+
+                        # Distância ou duração
+                        if segment.distance_km:
+                            seg_details.append(f"{segment.distance_km:.1f}km")
+                        elif segment.duration_minutes:
+                            seg_details.append(f"{segment.duration_minutes}min")
+
+                        # Pace
+                        if segment.pace_per_km:
+                            seg_details.append(f"@ {segment.pace_per_km}/km")
+
+                        # Repetições
+                        if segment.repetitions and segment.repetitions > 1:
+                            seg_text = f"• {segment.repetitions}x {segment.name}: {', '.join(seg_details)}"
+                        else:
+                            seg_text = f"• {segment.name}: {', '.join(seg_details)}"
+
+                        # Descrição do segmento
+                        if segment.description:
+                            seg_text += f" - <i>{segment.description}</i>"
+
+                        elements.append(Paragraph(seg_text, segment_style))
+
         elements.append(Spacer(1, 0.15*inch))
 
         # Page break a cada 3 semanas para melhor layout
