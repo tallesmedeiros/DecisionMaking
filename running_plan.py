@@ -8,6 +8,20 @@ import json
 from dataclasses import dataclass, asdict, field
 
 
+def round_to_nearest_5km(distance_km: float) -> float:
+    """Round distance to nearest 5km increment."""
+    if distance_km == 0:
+        return 0
+    return max(5, round(distance_km / 5) * 5)
+
+
+def round_to_nearest_30min(minutes: float) -> int:
+    """Round time to nearest 30min increment."""
+    if minutes == 0:
+        return 0
+    return max(30, round(minutes / 30) * 30)
+
+
 @dataclass
 class WorkoutSegment:
     """Represents a segment of a workout (warmup, intervals, cooldown, etc)."""
@@ -267,6 +281,43 @@ class Week:
 
         return result
 
+    def get_zone_distribution(self) -> Dict[str, float]:
+        """
+        Get the distribution of training zones for this week.
+
+        Returns:
+            Dictionary mapping zone names to total km in that zone
+        """
+        distribution = {
+            'easy': 0.0,
+            'marathon': 0.0,
+            'threshold': 0.0,
+            'interval': 0.0,
+            'repetition': 0.0,
+            'rest': 0.0
+        }
+
+        for workout in self.workouts:
+            if workout.type == "Rest" or not workout.distance_km:
+                continue
+
+            zone = workout.training_zone if workout.training_zone else 'easy'
+
+            # Normalize zone names
+            if zone in ['Easy Run', 'Long Run']:
+                zone = 'easy'
+            elif zone == 'Tempo Run':
+                zone = 'threshold'
+            elif zone == 'Interval Training':
+                zone = 'interval'
+            elif zone == 'Fartlek':
+                zone = 'threshold'
+
+            if zone in distribution:
+                distribution[zone] += workout.distance_km
+
+        return distribution
+
     def __str__(self):
         self.calculate_total_distance()
         result = f"\n=== Week {self.week_number} ===\n"
@@ -455,6 +506,24 @@ class RunningPlan:
     def print_visual(self, **kwargs):
         """Print visual representation of the plan."""
         print(self.to_visual_str(**kwargs))
+
+    def get_weekly_volumes(self) -> List[float]:
+        """
+        Get weekly volumes (total km) for all weeks in the plan.
+
+        Returns:
+            List of weekly distances in km
+        """
+        return [week.total_distance_km for week in self.schedule]
+
+    def get_zone_distributions(self) -> List[Dict[str, float]]:
+        """
+        Get zone distribution for each week.
+
+        Returns:
+            List of dictionaries, each mapping zone names to km
+        """
+        return [week.get_zone_distribution() for week in self.schedule]
 
     def __str__(self):
         result = f"\n{'='*50}\n"
