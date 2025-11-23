@@ -18,6 +18,10 @@ ENV/
 
 # Generated training plans
 *.json
+*.pdf
+
+# Sensitive configuration files (Intervals.icu credentials)
+intervals_config.json
 
 # OS
 .DS_Store
