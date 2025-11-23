@@ -735,6 +735,175 @@ class PlanGenerator:
         return workout
 
     @classmethod
+    def _create_short_interval_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None,
+                                    level: str = "intermediate") -> Workout:
+        """
+        Create short interval workout (<500m) for speed and technique.
+
+        NEW: Specific workout for intermediate/advanced 3-day/week plans
+        """
+        rounded_distance = round_to_nearest_5km(distance_km)
+
+        workout = Workout(
+            day=day,
+            type="Short Intervals",
+            distance_km=rounded_distance,
+            description="Intervalos curtos para velocidade e técnica",
+            training_zone="interval"
+        )
+
+        if training_zones:
+            # Warmup: 25% of distance
+            warmup_km = round(rounded_distance * 0.25, 1)
+            warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            # Short intervals: 400m repeats
+            base_interval = 0.4  # 400m
+            interval_total_km = rounded_distance * 0.50
+            work_km = round(interval_total_km * 0.60, 1)
+            num_repeats = max(8, min(12, int(work_km / base_interval)))
+
+            interval_pace = training_zones.get_zone_pace_str('interval', 'middle')
+            work_time_per = training_zones.get_time_for_distance(base_interval, training_zones.get_zone_pace('interval', 'middle')) // 60
+
+            # Recovery based on level
+            recovery_ratios = {'beginner': 1.0, 'intermediate': 0.75, 'advanced': 0.5}
+            recovery_ratio = recovery_ratios.get(level, 0.75)
+            recovery_time_per = int(work_time_per * recovery_ratio)
+
+            # Cooldown
+            cooldown_km = round(rounded_distance - warmup_km - (base_interval * num_repeats), 1)
+            cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            workout.target_pace = interval_pace
+
+            # Add segments
+            workout.add_segment(WorkoutSegment(
+                name="Aquecimento",
+                distance_km=warmup_km,
+                duration_minutes=warmup_time,
+                pace_per_km=warmup_pace,
+                description="Preparação gradual"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Tiro Curto (400m)",
+                distance_km=base_interval,
+                duration_minutes=work_time_per,
+                pace_per_km=interval_pace,
+                repetitions=num_repeats,
+                description="Velocidade máxima sustentável - técnica de corrida"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Recuperação (trote/caminhada)",
+                duration_minutes=recovery_time_per,
+                pace_per_km=training_zones.get_zone_pace_str('easy'),
+                repetitions=num_repeats,
+                description="Recuperação ativa"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Desaquecimento",
+                distance_km=cooldown_km,
+                duration_minutes=cooldown_time,
+                pace_per_km=cooldown_pace,
+                description="Volta à calma"
+            ))
+
+            total_time = warmup_time + (work_time_per + recovery_time_per) * num_repeats + cooldown_time
+            workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
+
+        return workout
+
+    @classmethod
+    def _create_long_interval_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None,
+                                   level: str = "intermediate") -> Workout:
+        """
+        Create long interval workout (>800m) for VO2max and endurance.
+
+        NEW: Specific workout for intermediate/advanced 3-day/week plans
+        """
+        rounded_distance = round_to_nearest_5km(distance_km)
+
+        workout = Workout(
+            day=day,
+            type="Long Intervals",
+            distance_km=rounded_distance,
+            description="Intervalos longos para resistência aeróbica",
+            training_zone="threshold"
+        )
+
+        if training_zones:
+            # Warmup: 20% of distance
+            warmup_km = round(rounded_distance * 0.20, 1)
+            warmup_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            # Long intervals: 800m-1200m repeats
+            base_interval = 1.0  # 1000m
+            interval_total_km = rounded_distance * 0.60
+            work_km = round(interval_total_km * 0.65, 1)
+            num_repeats = max(4, min(8, int(work_km / base_interval)))
+
+            # Use threshold pace (slightly slower than interval pace)
+            threshold_pace = training_zones.get_zone_pace_str('threshold', 'middle')
+            work_time_per = training_zones.get_time_for_distance(base_interval, training_zones.get_zone_pace('threshold', 'middle')) // 60
+
+            # Recovery based on level
+            recovery_ratios = {'beginner': 1.0, 'intermediate': 0.75, 'advanced': 0.5}
+            recovery_ratio = recovery_ratios.get(level, 0.75)
+            recovery_time_per = int(work_time_per * recovery_ratio)
+
+            # Cooldown
+            cooldown_km = round(rounded_distance - warmup_km - (base_interval * num_repeats), 1)
+            cooldown_pace = training_zones.get_zone_pace_str('easy', 'middle')
+            cooldown_time = training_zones.get_time_for_distance(cooldown_km, training_zones.get_zone_pace('easy', 'middle')) // 60
+
+            workout.target_pace = threshold_pace
+
+            # Add segments
+            workout.add_segment(WorkoutSegment(
+                name="Aquecimento",
+                distance_km=warmup_km,
+                duration_minutes=warmup_time,
+                pace_per_km=warmup_pace,
+                description="Preparação"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Intervalo Longo (1000m)",
+                distance_km=base_interval,
+                duration_minutes=work_time_per,
+                pace_per_km=threshold_pace,
+                repetitions=num_repeats,
+                description="Ritmo de limiar - resistência anaeróbica"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Recuperação (trote)",
+                duration_minutes=recovery_time_per,
+                pace_per_km=training_zones.get_zone_pace_str('easy'),
+                repetitions=num_repeats,
+                description="Recuperação ativa"
+            ))
+
+            workout.add_segment(WorkoutSegment(
+                name="Desaquecimento",
+                distance_km=cooldown_km,
+                duration_minutes=cooldown_time,
+                pace_per_km=cooldown_pace,
+                description="Volta à calma"
+            ))
+
+            total_time = warmup_time + (work_time_per + recovery_time_per) * num_repeats + cooldown_time
+            workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
+
+        return workout
+
+    @classmethod
     def _create_progressive_long_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
         """
         Create a progressive long run (finish faster than start).
@@ -856,31 +1025,84 @@ class PlanGenerator:
     @classmethod
     def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
                              training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
-        """Generate workouts for a 3-day training week."""
+        """
+        Generate workouts for a 3-day training week.
+
+        NEW LOGIC for intermediate/advanced:
+        - Day 1: Short intervals (<500m) - EXCEPT for Half/Marathon
+        - Day 2: Tempo run OR Long intervals (>800m) - alternate
+        - Day 3: Long run
+        """
         workouts = []
 
-        # Easy run
-        easy_distance = weekly_distance * 0.3
-        workouts.append(cls._create_easy_run("Tuesday", easy_distance, training_zones))
-
-        # Race-specific phase check
+        # Check if intermediate or advanced
+        is_advanced_level = level in ["intermediate", "advanced"]
+        is_endurance_race = goal in ["Half Marathon", "Marathon"]
         race_specific_phase = (week_num > total_weeks - 6) and (week_num <= total_weeks - 2)
 
-        # Tempo, race-specific, or easy
-        quality_distance = weekly_distance * 0.25
-        if week_num <= 3:
-            workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
-        elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
-            workouts.append(cls._create_race_pace_intervals("Thursday", quality_distance, goal, training_zones, level))
-        else:
-            workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
+        if is_advanced_level and training_zones:
+            # NEW LOGIC: Specific structure for intermediate/advanced with 3 days
 
-        # Long run - Marathon pace for Marathon goal
-        long_distance = weekly_distance * 0.45
-        if race_specific_phase and training_zones and goal == "Marathon":
-            workouts.append(cls._create_marathon_pace_run("Saturday", long_distance, training_zones))
+            # Distribution
+            quality_1_distance = weekly_distance * 0.25
+            quality_2_distance = weekly_distance * 0.30
+            long_distance = weekly_distance * 0.45
+
+            # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
+            if week_num <= 2:
+                # First 2 weeks: easy runs for adaptation
+                workouts.append(cls._create_easy_run("Tuesday", quality_1_distance, training_zones))
+            elif is_endurance_race:
+                # Half/Marathon: Use long intervals instead of short
+                workouts.append(cls._create_long_interval_run("Tuesday", quality_1_distance, training_zones, level))
+            else:
+                # 5K/10K: Use short intervals for speed
+                workouts.append(cls._create_short_interval_run("Tuesday", quality_1_distance, training_zones, level))
+
+            # DAY 2 (Thursday): Tempo run OR Long intervals (alternate)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", quality_2_distance, training_zones))
+            elif race_specific_phase and goal in ["5K", "10K"]:
+                # Race-specific phase: use race pace intervals
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_2_distance, goal, training_zones, level))
+            elif week_num % 2 == 0:
+                # Even weeks: Long intervals
+                workouts.append(cls._create_long_interval_run("Thursday", quality_2_distance, training_zones, level))
+            else:
+                # Odd weeks: Tempo run
+                workouts.append(cls._create_tempo_run("Thursday", quality_2_distance, training_zones))
+
+            # DAY 3 (Saturday): Long run - with variations
+            if race_specific_phase and goal == "Marathon":
+                # Marathon specific: Marathon pace run
+                workouts.append(cls._create_marathon_pace_run("Saturday", long_distance, training_zones))
+            elif (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase:
+                # Every 3 weeks: Progressive long run for variety
+                workouts.append(cls._create_progressive_long_run("Saturday", long_distance, training_zones))
+            else:
+                # Standard long run
+                workouts.append(cls._create_long_run("Saturday", long_distance, training_zones))
+
         else:
-            workouts.append(cls._create_long_run("Saturday", long_distance, training_zones))
+            # BEGINNER LOGIC: Keep original simple structure
+            easy_distance = weekly_distance * 0.3
+            workouts.append(cls._create_easy_run("Tuesday", easy_distance, training_zones))
+
+            # Tempo, race-specific, or easy
+            quality_distance = weekly_distance * 0.25
+            if week_num <= 3:
+                workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
+            elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_distance, goal, training_zones, level))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
+
+            # Long run - Marathon pace for Marathon goal
+            long_distance = weekly_distance * 0.45
+            if race_specific_phase and training_zones and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Saturday", long_distance, training_zones))
+            else:
+                workouts.append(cls._create_long_run("Saturday", long_distance, training_zones))
 
         # Add rest days
         for day in ["Monday", "Wednesday", "Friday", "Sunday"]:
@@ -891,46 +1113,82 @@ class PlanGenerator:
     @classmethod
     def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
                              training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
-        """Generate workouts for a 4-day training week."""
+        """
+        Generate workouts for a 4-day training week.
+
+        NEW: For intermediate/advanced, keep 3 quality workouts + 1 easy run
+        """
         workouts = []
 
-        # Easy run 1
-        easy_distance_1 = weekly_distance * 0.25
-        workouts.append(cls._create_easy_run("Tuesday", easy_distance_1, training_zones))
-
-        # IMPROVEMENT 5: Use race-specific workouts in final 4-6 weeks
+        # Check if intermediate or advanced
+        is_advanced_level = level in ["intermediate", "advanced"]
+        is_endurance_race = goal in ["Half Marathon", "Marathon"]
         race_specific_phase = (week_num > total_weeks - 6) and (week_num <= total_weeks - 2)
 
-        # Tempo, intervals, or race-specific depending on week
-        quality_distance = weekly_distance * 0.22
-        if week_num <= 2:
-            workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
-        elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
-            # Use race-specific intervals in final weeks
-            workouts.append(cls._create_race_pace_intervals("Thursday", quality_distance, goal, training_zones, level))
-        elif week_num % 2 == 0:
-            workouts.append(cls._create_interval_run("Thursday", quality_distance, training_zones, level, week_num, total_weeks))
+        if is_advanced_level and training_zones:
+            # NEW LOGIC: Same 3 quality workouts as 3-day + 1 easy run
+
+            # Distribution: smaller percentages due to 4th day
+            quality_1_distance = weekly_distance * 0.22
+            quality_2_distance = weekly_distance * 0.26
+            easy_distance = weekly_distance * 0.15  # 4th training day
+            long_distance = weekly_distance * 0.37
+
+            # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Tuesday", quality_1_distance, training_zones))
+            elif is_endurance_race:
+                workouts.append(cls._create_long_interval_run("Tuesday", quality_1_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_short_interval_run("Tuesday", quality_1_distance, training_zones, level))
+
+            # DAY 2 (Thursday): Tempo run OR Long intervals (alternate)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", quality_2_distance, training_zones))
+            elif race_specific_phase and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_2_distance, goal, training_zones, level))
+            elif week_num % 2 == 0:
+                workouts.append(cls._create_long_interval_run("Thursday", quality_2_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", quality_2_distance, training_zones))
+
+            # DAY 3 (Friday): Easy run - EXTRA DAY with varied duration
+            workouts.append(cls._create_easy_run("Friday", easy_distance, training_zones))
+
+            # DAY 4 (Sunday): Long run - with variations
+            if race_specific_phase and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
+            elif (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase:
+                workouts.append(cls._create_progressive_long_run("Sunday", long_distance, training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
+
         else:
-            workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
+            # BEGINNER LOGIC: Keep original simple distribution
+            easy_distance_1 = weekly_distance * 0.22
+            workouts.append(cls._create_easy_run("Tuesday", easy_distance_1, training_zones))
 
-        # Easy run 2
-        easy_distance_2 = weekly_distance * 0.18
-        workouts.append(cls._create_easy_run("Friday", easy_distance_2, training_zones))
+            quality_distance = weekly_distance * 0.23
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
+            elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_distance, goal, training_zones, level))
+            elif week_num % 2 == 0:
+                workouts.append(cls._create_interval_run("Thursday", quality_distance, training_zones, level, week_num, total_weeks))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
 
-        # Long run - use Marathon Pace Run for Marathon goal in final weeks
-        # IMPROVEMENT 6: Use progressive long run variation every 3 weeks
-        long_distance = weekly_distance * 0.35
-        use_progressive = (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase and training_zones
+            easy_distance_2 = weekly_distance * 0.20
+            workouts.append(cls._create_easy_run("Friday", easy_distance_2, training_zones))
 
-        if race_specific_phase and training_zones and goal == "Marathon":
-            # Marathon pace long run
-            workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
-        elif use_progressive:
-            # Progressive long run for variety
-            workouts.append(cls._create_progressive_long_run("Sunday", long_distance, training_zones))
-        else:
-            # Standard long run
-            workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
+            long_distance = weekly_distance * 0.35
+            use_progressive = (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase and training_zones
+            if race_specific_phase and training_zones and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
+            elif use_progressive:
+                workouts.append(cls._create_progressive_long_run("Sunday", long_distance, training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
 
         # Add rest days
         for day in ["Monday", "Wednesday", "Saturday"]:
@@ -941,41 +1199,88 @@ class PlanGenerator:
     @classmethod
     def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
                              training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
-        """Generate workouts for a 5-day training week."""
+        """
+        Generate workouts for a 5-day training week.
+
+        NEW: For intermediate/advanced, keep 3 quality workouts + 2 easy runs
+        """
         workouts = []
 
-        # Distribution for 5-day week
-        distances = {
-            "easy1": weekly_distance * 0.20,
-            "easy2": weekly_distance * 0.18,
-            "easy3": weekly_distance * 0.15,
-            "quality": weekly_distance * 0.20,
-            "long": weekly_distance * 0.27
-        }
-
-        workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
-        workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
-
-        # Race-specific phase check
+        # Check if intermediate or advanced
+        is_advanced_level = level in ["intermediate", "advanced"]
+        is_endurance_race = goal in ["Half Marathon", "Marathon"]
         race_specific_phase = (week_num > total_weeks - 6) and (week_num <= total_weeks - 2)
 
-        # Quality workout with race-specific option
-        if week_num <= 2:
-            workouts.append(cls._create_easy_run("Thursday", distances["quality"], training_zones))
-        elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
-            workouts.append(cls._create_race_pace_intervals("Thursday", distances["quality"], goal, training_zones, level))
-        elif week_num % 2 == 0:
-            workouts.append(cls._create_interval_run("Thursday", distances["quality"], training_zones, level, week_num, total_weeks))
-        else:
-            workouts.append(cls._create_tempo_run("Thursday", distances["quality"], training_zones))
+        if is_advanced_level and training_zones:
+            # NEW LOGIC: Same 3 quality workouts as 3-day + 2 easy runs
 
-        workouts.append(cls._create_easy_run("Friday", distances["easy3"], training_zones))
+            # Distribution
+            easy_1_distance = weekly_distance * 0.17
+            quality_1_distance = weekly_distance * 0.19
+            quality_2_distance = weekly_distance * 0.23
+            easy_2_distance = weekly_distance * 0.12  # 5th day
+            long_distance = weekly_distance * 0.29
 
-        # Long run - Marathon pace for Marathon goal
-        if race_specific_phase and training_zones and goal == "Marathon":
-            workouts.append(cls._create_marathon_pace_run("Sunday", distances["long"], training_zones))
+            # DAY 1 (Monday): Easy run - EXTRA DAY with shorter duration
+            workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
+
+            # DAY 2 (Tuesday): Short intervals OR Long intervals (if endurance race)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Tuesday", quality_1_distance, training_zones))
+            elif is_endurance_race:
+                workouts.append(cls._create_long_interval_run("Tuesday", quality_1_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_short_interval_run("Tuesday", quality_1_distance, training_zones, level))
+
+            # DAY 3 (Thursday): Tempo run OR Long intervals (alternate)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", quality_2_distance, training_zones))
+            elif race_specific_phase and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_2_distance, goal, training_zones, level))
+            elif week_num % 2 == 0:
+                workouts.append(cls._create_long_interval_run("Thursday", quality_2_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", quality_2_distance, training_zones))
+
+            # DAY 4 (Friday): Easy run - EXTRA DAY with varied duration
+            workouts.append(cls._create_easy_run("Friday", easy_2_distance, training_zones))
+
+            # DAY 5 (Sunday): Long run - with variations
+            if race_specific_phase and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
+            elif (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase:
+                workouts.append(cls._create_progressive_long_run("Sunday", long_distance, training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
+
         else:
-            workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
+            # BEGINNER LOGIC: Keep original simple distribution
+            distances = {
+                "easy1": weekly_distance * 0.20,
+                "easy2": weekly_distance * 0.18,
+                "easy3": weekly_distance * 0.15,
+                "quality": weekly_distance * 0.20,
+                "long": weekly_distance * 0.27
+            }
+
+            workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
+            workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
+
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", distances["quality"], training_zones))
+            elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", distances["quality"], goal, training_zones, level))
+            elif week_num % 2 == 0:
+                workouts.append(cls._create_interval_run("Thursday", distances["quality"], training_zones, level, week_num, total_weeks))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", distances["quality"], training_zones))
+
+            workouts.append(cls._create_easy_run("Friday", distances["easy3"], training_zones))
+
+            if race_specific_phase and training_zones and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", distances["long"], training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
 
         # Rest days
         for day in ["Wednesday", "Saturday"]:
@@ -986,45 +1291,96 @@ class PlanGenerator:
     @classmethod
     def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
                              training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
-        """Generate workouts for a 6-day training week."""
+        """
+        Generate workouts for a 6-day training week.
+
+        NEW: For intermediate/advanced, keep 3 quality workouts + 3 easy runs
+        """
         workouts = []
 
-        # Distribution for 6-day week
-        distances = {
-            "easy1": weekly_distance * 0.18,
-            "easy2": weekly_distance * 0.16,
-            "easy3": weekly_distance * 0.14,
-            "easy4": weekly_distance * 0.12,
-            "quality": weekly_distance * 0.18,
-            "long": weekly_distance * 0.22
-        }
-
-        workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
-        workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
-
-        # Race-specific phase check
+        # Check if intermediate or advanced
+        is_advanced_level = level in ["intermediate", "advanced"]
+        is_endurance_race = goal in ["Half Marathon", "Marathon"]
         race_specific_phase = (week_num > total_weeks - 6) and (week_num <= total_weeks - 2)
 
-        # Quality workout with race-specific option
-        if week_num <= 2:
-            workouts.append(cls._create_easy_run("Wednesday", distances["quality"], training_zones))
-        elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
-            workouts.append(cls._create_race_pace_intervals("Wednesday", distances["quality"], goal, training_zones, level))
-        elif week_num % 3 == 0:
-            workouts.append(cls._create_fartlek_run("Wednesday", distances["quality"], training_zones))
-        elif week_num % 3 == 1:
-            workouts.append(cls._create_interval_run("Wednesday", distances["quality"], training_zones, level, week_num, total_weeks))
-        else:
-            workouts.append(cls._create_tempo_run("Wednesday", distances["quality"], training_zones))
+        if is_advanced_level and training_zones:
+            # NEW LOGIC: Same 3 quality workouts as 3-day + 3 easy runs
 
-        workouts.append(cls._create_easy_run("Thursday", distances["easy3"], training_zones))
-        workouts.append(cls._create_easy_run("Friday", distances["easy4"], training_zones))
+            # Distribution
+            easy_1_distance = weekly_distance * 0.15
+            quality_1_distance = weekly_distance * 0.17
+            easy_2_distance = weekly_distance * 0.13
+            quality_2_distance = weekly_distance * 0.21
+            easy_3_distance = weekly_distance * 0.11  # 6th day
+            long_distance = weekly_distance * 0.23
 
-        # Long run - Marathon pace for Marathon goal
-        if race_specific_phase and training_zones and goal == "Marathon":
-            workouts.append(cls._create_marathon_pace_run("Sunday", distances["long"], training_zones))
+            # DAY 1 (Monday): Easy run - EXTRA DAY
+            workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
+
+            # DAY 2 (Tuesday): Short intervals OR Long intervals (if endurance race)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Tuesday", quality_1_distance, training_zones))
+            elif is_endurance_race:
+                workouts.append(cls._create_long_interval_run("Tuesday", quality_1_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_short_interval_run("Tuesday", quality_1_distance, training_zones, level))
+
+            # DAY 3 (Wednesday): Easy run - EXTRA DAY with varied duration
+            workouts.append(cls._create_easy_run("Wednesday", easy_2_distance, training_zones))
+
+            # DAY 4 (Thursday): Tempo run OR Long intervals (alternate)
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Thursday", quality_2_distance, training_zones))
+            elif race_specific_phase and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Thursday", quality_2_distance, goal, training_zones, level))
+            elif week_num % 2 == 0:
+                workouts.append(cls._create_long_interval_run("Thursday", quality_2_distance, training_zones, level))
+            else:
+                workouts.append(cls._create_tempo_run("Thursday", quality_2_distance, training_zones))
+
+            # DAY 5 (Friday): Easy run - EXTRA DAY with shorter duration
+            workouts.append(cls._create_easy_run("Friday", easy_3_distance, training_zones))
+
+            # DAY 6 (Sunday): Long run - with variations
+            if race_specific_phase and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
+            elif (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase:
+                workouts.append(cls._create_progressive_long_run("Sunday", long_distance, training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", long_distance, training_zones))
+
         else:
-            workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
+            # BEGINNER LOGIC: Keep original simple distribution
+            distances = {
+                "easy1": weekly_distance * 0.18,
+                "easy2": weekly_distance * 0.16,
+                "easy3": weekly_distance * 0.14,
+                "easy4": weekly_distance * 0.12,
+                "quality": weekly_distance * 0.18,
+                "long": weekly_distance * 0.22
+            }
+
+            workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
+            workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
+
+            if week_num <= 2:
+                workouts.append(cls._create_easy_run("Wednesday", distances["quality"], training_zones))
+            elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
+                workouts.append(cls._create_race_pace_intervals("Wednesday", distances["quality"], goal, training_zones, level))
+            elif week_num % 3 == 0:
+                workouts.append(cls._create_fartlek_run("Wednesday", distances["quality"], training_zones))
+            elif week_num % 3 == 1:
+                workouts.append(cls._create_interval_run("Wednesday", distances["quality"], training_zones, level, week_num, total_weeks))
+            else:
+                workouts.append(cls._create_tempo_run("Wednesday", distances["quality"], training_zones))
+
+            workouts.append(cls._create_easy_run("Thursday", distances["easy3"], training_zones))
+            workouts.append(cls._create_easy_run("Friday", distances["easy4"], training_zones))
+
+            if race_specific_phase and training_zones and goal == "Marathon":
+                workouts.append(cls._create_marathon_pace_run("Sunday", distances["long"], training_zones))
+            else:
+                workouts.append(cls._create_long_run("Sunday", distances["long"], training_zones))
 
         # One rest day
         workouts.append(Workout(day="Saturday", type="Rest", description="Dia de recuperação"))
