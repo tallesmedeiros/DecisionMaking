@@ -447,7 +447,7 @@ class RunningPlan:
 
         return plan
 
-    def to_visual_str(self, show_all_weeks: bool = False, week_range: tuple = None) -> str:
+    def to_visual_str(self, show_all_weeks: bool = True, week_range: tuple = None) -> str:
         """
         Return visual representation of the plan.
 
