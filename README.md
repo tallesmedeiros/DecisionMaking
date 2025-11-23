@@ -31,6 +31,12 @@ Um software completo em Python para criar planos de treino de corrida personaliz
   - Volume semanal com gradiente de cores (azul→vermelho)
   - Distribuição de zonas em gráfico empilhado
 
+- **🔄 Integração com Intervals.icu** (NOVO!):
+  - Upload automático do plano para sua conta Intervals.icu
+  - Sincronização de treinos estruturados com zonas
+  - Acompanhamento fácil pelo app ou web
+  - Configuração simples com API Key
+
 - **🔬 Calculadora de Zonas de Treino**: Zonas de pace personalizadas baseadas em tempos recentes de prova
   - Método Jack Daniels VDOT (baseado em VO2max)
   - Método de Velocidade Crítica
@@ -138,6 +144,124 @@ Visualize um plano de treino salvo:
 ```bash
 python cli.py view meu_plano.json
 ```
+
+---
+
+## 🔄 Integração com Intervals.icu
+
+**✨ NOVO!** Envie seu plano de treino diretamente para sua conta Intervals.icu e acompanhe seus treinos pelo app!
+
+### 📋 O que é Intervals.icu?
+
+[Intervals.icu](https://intervals.icu) é uma plataforma gratuita e poderosa para análise de treinos e planejamento. Com essa integração, você pode:
+
+- 📱 Ver seus treinos planejados no app móvel ou web
+- 📊 Acompanhar execução vs planejado
+- 📈 Analisar métricas de performance
+- ⌚ Sincronizar com Garmin, Polar, Wahoo, etc.
+
+### ⚙️ Configuração (Apenas Primeira Vez)
+
+**1. Obter suas credenciais:**
+
+1. Acesse https://intervals.icu/
+2. Faça login na sua conta
+3. Vá em **Settings** (Configurações)
+4. Clique em **Developer**
+5. Copie sua **API Key** completa (formato: `athlete_12345:chave_longa`)
+6. O **athlete_id** é o número que aparece após `athlete_`
+
+**2. Configurar no sistema:**
+
+**Opção A - Via Notebook (Google Colab):**
+
+Nos notebooks, execute a célula de configuração e preencha:
+
+```python
+from intervals_integration import create_config_file
+
+# Substitua pelos seus valores:
+minha_api_key = "athlete_12345:sua_chave_completa_aqui"
+meu_athlete_id = "12345"
+
+create_config_file(minha_api_key, meu_athlete_id)
+```
+
+**Opção B - Manualmente:**
+
+Crie um arquivo `intervals_config.json` na raiz do projeto:
+
+```json
+{
+  "api_key": "athlete_12345:sua_chave_completa",
+  "athlete_id": "12345"
+}
+```
+
+⚠️ **IMPORTANTE**: Este arquivo contém credenciais sensíveis e já está no `.gitignore` - nunca compartilhe ou faça commit dele!
+
+### 🚀 Como Usar
+
+**No Jupyter Notebook:**
+
+Após gerar seu plano, execute:
+
+```python
+from intervals_integration import IntervalsUploader
+
+uploader = IntervalsUploader()
+uploader.upload_plan(plan)
+```
+
+**Via Python (programaticamente):**
+
+```python
+from running_plan import RunningPlan
+from intervals_integration import IntervalsUploader
+
+# Carregar plano existente
+plan = RunningPlan.load_from_file("meu_plano.json")
+
+# Fazer upload
+uploader = IntervalsUploader()
+success = uploader.upload_plan(plan)
+
+if success:
+    print("✅ Plano enviado com sucesso!")
+```
+
+### ✅ Testar Conexão
+
+Antes de fazer upload, teste se suas credenciais estão corretas:
+
+```python
+from intervals_integration import IntervalsUploader
+
+uploader = IntervalsUploader()
+uploader.test_connection()
+```
+
+### 🎯 O que é enviado?
+
+O sistema envia cada treino do seu plano como um **evento planejado** no calendário Intervals.icu:
+
+- 📅 Data e hora do treino
+- 🏃 Tipo de treino (Easy Run, Tempo, Interval, etc)
+- ⏱️ Duração estimada
+- 📝 Descrição completa do treino
+- 🎯 Estrutura detalhada com segmentos (aquecimento, principal, desaquecimento)
+- 📊 Zonas de intensidade
+
+### 📱 Acompanhamento
+
+Após o upload:
+
+1. Acesse https://intervals.icu/athletes/SEU_ID/calendar
+2. Veja todos os seus treinos planejados no calendário
+3. Use o app móvel Intervals.icu para ver treinos do dia
+4. Complete os treinos e compare planejado vs executado
+
+---
 
 ## 💡 Exemplos de Uso
 

@@ -1,0 +1,20 @@
+{
+  "api_key": "athlete_12345:sua_chave_api_completa_aqui",
+  "athlete_id": "12345",
+  "_instrucoes": {
+    "como_obter": [
+      "1. Acesse https://intervals.icu/",
+      "2. Faça login na sua conta",
+      "3. Vá em Settings (Configurações)",
+      "4. Clique em Developer",
+      "5. Copie sua API Key completa (formato: athlete_XXXXX:chave_longa)",
+      "6. O athlete_id é o número que aparece após 'athlete_'"
+    ],
+    "como_usar": [
+      "1. Renomeie este arquivo para 'intervals_config.json'",
+      "2. Substitua os valores acima pelas suas credenciais reais",
+      "3. NUNCA compartilhe este arquivo ou faça commit dele no git",
+      "4. O arquivo intervals_config.json já está no .gitignore"
+    ]
+  }
+}
