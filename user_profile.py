@@ -65,6 +65,7 @@ class UserProfile:
     # Training Zones (Recent Race Times)
     recent_race_times: Dict[str, str] = field(default_factory=dict)  # {"5K": "22:30", "10K": "47:15"}
     zones_calculation_method: str = "jack_daniels"  # "jack_daniels" or "critical_velocity"
+    vdot_estimate: Optional[float] = None
 
     # Heart Rate (optional)
     hr_resting: Optional[int] = None
@@ -314,6 +315,8 @@ class UserProfile:
             for distance, time in self.recent_race_times.items():
                 result += f"   • {distance}: {time}\n"
             result += f"Método de cálculo: {self.zones_calculation_method}\n"
+        if self.vdot_estimate:
+            result += f"Estimativa de VDOT (Jack Daniels): {self.vdot_estimate:.1f}\n"
 
         # Heart rate
         if self.hr_resting or self.hr_max:
