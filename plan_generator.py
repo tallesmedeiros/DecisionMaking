@@ -30,6 +30,36 @@ class PlanGenerator:
     }
 
     DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    KEY_WORKOUT_TYPES = {
+        "Long Run",
+        "Progressive Long Run",
+        "Marathon Pace Run",
+        "Tempo Run",
+        "Interval Training",
+        "Short Intervals",
+        "Long Intervals",
+        "Race Pace Intervals",
+    }
+    LONG_RUN_TYPES = {"Long Run", "Progressive Long Run", "Marathon Pace Run"}
+
+    PORTUGUESE_DAY_MAP = {
+        "segunda": "Monday",
+        "segunda-feira": "Monday",
+        "terca": "Tuesday",
+        "terça": "Tuesday",
+        "terca-feira": "Tuesday",
+        "terça-feira": "Tuesday",
+        "quarta": "Wednesday",
+        "quarta-feira": "Wednesday",
+        "quinta": "Thursday",
+        "quinta-feira": "Thursday",
+        "sexta": "Friday",
+        "sexta-feira": "Friday",
+        "sabado": "Saturday",
+        "sábado": "Saturday",
+        "sabado-feira": "Saturday",
+        "domingo": "Sunday",
+    }
 
     @classmethod
     def generate_plan(
@@ -392,6 +422,12 @@ class PlanGenerator:
         elif week_number % 4 == 0 and week_number < total_weeks - 2:
             notes = "Recovery week - volume reduced by 25% to absorb training and prevent overtraining."
 
+        # Apply schedule preferences based on user agenda
+        if user_profile:
+            workouts, schedule_notes = cls._apply_schedule_preferences(workouts, user_profile, week_number)
+            if schedule_notes:
+                notes = notes + "\n\n" if notes else ""
+                notes += "\n".join(schedule_notes)
         # Add persistent safety notes
         additional_sections = []
         if profile_adjustments.get('impact_limitations'):
@@ -431,6 +467,138 @@ class PlanGenerator:
         week = Week(week_number=week_number, workouts=workouts, notes=notes)
         week.calculate_total_distance()
         return week
+
+    @classmethod
+    def _normalize_day_name(cls, day: str) -> str:
+        """Normalize day names, supporting English and Portuguese inputs."""
+        if not day:
+            return day
+
+        day_lower = day.strip().lower()
+        if day_lower in cls.PORTUGUESE_DAY_MAP:
+            return cls.PORTUGUESE_DAY_MAP[day_lower]
+
+        for valid_day in cls.DAYS_OF_WEEK:
+            if valid_day.lower() == day_lower:
+                return valid_day
+        return day
+
+    @classmethod
+    def _get_active_stress_map(cls, user_profile: 'UserProfile', week_number: int) -> dict:
+        """Get stress blocks for the appropriate week (A/B if alternating)."""
+        if not user_profile:
+            return {}
+
+        stress_map = user_profile.stressful_blocks or {}
+        if user_profile.use_alternating_weeks and (week_number % 2 == 0):
+            stress_map = user_profile.alternate_stressful_blocks or stress_map
+
+        return {cls._normalize_day_name(day): periods for day, periods in stress_map.items()}
+
+    @classmethod
+    def _get_long_run_days(cls, user_profile: 'UserProfile', week_number: int) -> List[str]:
+        """Get preferred days for long runs for the given week."""
+        if not user_profile:
+            return []
+
+        long_run_days = user_profile.long_run_preference_days or []
+        if user_profile.use_alternating_weeks and (week_number % 2 == 0) and user_profile.alternate_long_run_days:
+            long_run_days = user_profile.alternate_long_run_days
+
+        return [cls._normalize_day_name(day) for day in long_run_days]
+
+    @classmethod
+    def _find_workout_on_day(cls, workouts: List[Workout], day: str) -> Optional[Workout]:
+        """Return workout scheduled for a specific day."""
+        for workout in workouts:
+            if workout.day == day:
+                return workout
+        return None
+
+    @classmethod
+    def _swap_workout_days(cls, first: Workout, second: Optional[Workout], target_day: str) -> str:
+        """Swap a workout to a target day, optionally exchanging with another workout.
+
+        Returns the original day of the first workout (useful for notes).
+        """
+        original_day = first.day
+        if second:
+            first.day, second.day = second.day, first.day
+        else:
+            first.day = target_day
+        return original_day
+
+    @classmethod
+    def _find_best_relocation_day(cls, workouts: List[Workout], stress_days: set, avoid_types: Optional[set] = None) -> Optional[str]:
+        """Find a non-stress day prioritizing rest days, then easy runs."""
+        if avoid_types is None:
+            avoid_types = set()
+
+        # Prefer rest days
+        for workout in workouts:
+            if workout.day not in stress_days and workout.type == "Rest":
+                return workout.day
+
+        # Next best: easy runs that are not in avoid_types
+        for workout in workouts:
+            if workout.day not in stress_days and workout.type == "Easy Run" and workout.type not in avoid_types:
+                return workout.day
+
+        # Fallback: any non-stress day
+        for workout in workouts:
+            if workout.day not in stress_days:
+                return workout.day
+        return None
+
+    @classmethod
+    def _apply_schedule_preferences(cls, workouts: List[Workout], user_profile: 'UserProfile', week_number: int) -> Tuple[List[Workout], List[str]]:
+        """
+        Adjust weekly schedule to respect high-stress blocks and long-run preferences.
+
+        Returns:
+            (updated_workouts, notes_about_adjustments)
+        """
+        adjustments = []
+        stress_map = cls._get_active_stress_map(user_profile, week_number)
+        stress_days = {day for day in stress_map}
+        long_run_days = cls._get_long_run_days(user_profile, week_number)
+
+        if not stress_map and not long_run_days:
+            return workouts, adjustments
+
+        # Move long runs to preferred days when possible
+        for workout in workouts:
+            if workout.type in cls.LONG_RUN_TYPES:
+                preferred_day = next((day for day in long_run_days if day not in stress_days), None)
+                if preferred_day and workout.day != preferred_day:
+                    target = cls._find_workout_on_day(workouts, preferred_day)
+                    original_day = cls._swap_workout_days(workout, target, preferred_day)
+                    adjustments.append(f"Longão movido de {original_day} para {preferred_day} por ser o dia com mais tempo livre.")
+                elif workout.day in stress_days:
+                    # Move away from stress day
+                    fallback_day = cls._find_best_relocation_day(workouts, stress_days, cls.LONG_RUN_TYPES)
+                    if fallback_day and fallback_day != workout.day:
+                        target = cls._find_workout_on_day(workouts, fallback_day)
+                        original_day = cls._swap_workout_days(workout, target, fallback_day)
+                        adjustments.append(f"Longão realocado para {fallback_day} para evitar bloco de alto estresse em {original_day}.")
+
+        # Move key workouts away from stress days
+        for workout in workouts:
+            if workout.type not in cls.KEY_WORKOUT_TYPES:
+                continue
+
+            if workout.day in stress_days:
+                new_day = cls._find_best_relocation_day(workouts, stress_days, cls.LONG_RUN_TYPES)
+                if new_day and new_day != workout.day:
+                    target = cls._find_workout_on_day(workouts, new_day)
+                    original_day = cls._swap_workout_days(workout, target, new_day)
+                    periods = stress_map.get(original_day, [])
+                    time_label = f" ({', '.join(periods)})" if periods else ""
+                    adjustments.append(f"Treino-chave ({workout.type}) movido de {original_day}{time_label} para {new_day} devido a agenda cheia.")
+
+        # Keep workouts sorted after changes
+        workouts = sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
+        return workouts, adjustments
 
     @classmethod
     def _limit_workout_by_time(cls, distance_km: float, max_minutes: Optional[int], training_zones: Optional[TrainingZones], zone: str = 'easy') -> float:

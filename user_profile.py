@@ -66,6 +66,11 @@ class UserProfile:
     hours_per_day: float = 1.0
     preferred_time: str = ""  # "morning", "afternoon", "evening"
     preferred_location: List[str] = field(default_factory=list)  # "track", "road", "trail", "treadmill"
+    stressful_blocks: Dict[str, List[str]] = field(default_factory=dict)  # {"Monday": ["evening"], "Thursday": ["morning"]}
+    long_run_preference_days: List[str] = field(default_factory=list)  # Days with more free time for long runs
+    use_alternating_weeks: bool = False
+    alternate_stressful_blocks: Dict[str, List[str]] = field(default_factory=dict)
+    alternate_long_run_days: List[str] = field(default_factory=list)
     weekly_schedule: Dict[str, List[Dict[str, object]]] = field(default_factory=dict)
 
     # Session logistics
@@ -383,6 +388,23 @@ class UserProfile:
             result += f"Horário preferido: {self.preferred_time}\n"
         if self.preferred_location:
             result += f"Local preferido: {', '.join(self.preferred_location)}\n"
+        if self.stressful_blocks:
+            result += "Blocos de alto estresse (evitar treinos-chave):\n"
+            for day, periods in self.stressful_blocks.items():
+                label = f"   • {day}"
+                if periods:
+                    label += f" ({', '.join(periods)})"
+                result += label + "\n"
+        if self.long_run_preference_days:
+            result += f"Dias com mais tempo para longões: {', '.join(self.long_run_preference_days)}\n"
+        if self.use_alternating_weeks:
+            result += "Agenda alternada (semanas A/B): ativa\n"
+            if self.alternate_stressful_blocks:
+                result += "  Semana B - blocos críticos: "
+                formatted = [f"{day} ({', '.join(periods)})" if periods else day for day, periods in self.alternate_stressful_blocks.items()]
+                result += ", ".join(formatted) + "\n"
+            if self.alternate_long_run_days:
+                result += f"  Semana B - longão preferido: {', '.join(self.alternate_long_run_days)}\n"
 
         if self.weekly_schedule:
             result += "Grade semanal:\n"
