@@ -49,14 +49,16 @@ class PlanGenerator:
         Returns:
             A complete RunningPlan object
         """
+        generator_params = None
         # If user_profile is provided, extract data from it
         if user_profile:
+            generator_params = user_profile.to_generator_params()
             # Build training zones from profile if not provided
             if training_zones is None and user_profile.recent_race_times:
                 training_zones = cls._build_zones_from_profile(user_profile)
 
             # Override days_per_week with profile's recommended value if safer
-            recommended_days = user_profile.get_recommended_days_per_week()
+            recommended_days = generator_params.get("days_per_week", user_profile.get_recommended_days_per_week())
             if recommended_days < days_per_week:
                 days_per_week = recommended_days
 
@@ -82,13 +84,13 @@ class PlanGenerator:
         plan = RunningPlan(name, goal, level, weeks, days_per_week)
 
         # Calculate profile-based adjustments
-        profile_adjustments = cls._calculate_profile_adjustments(user_profile) if user_profile else {}
+        profile_adjustments = cls._calculate_profile_adjustments(user_profile, generator_params if user_profile else None) if user_profile else {}
 
         # Generate weekly schedule
         for week_num in range(1, weeks + 1):
             week = cls._generate_week(
                 week_num, goal, level, weeks, days_per_week,
-                training_zones, user_profile, profile_adjustments
+                training_zones, user_profile, profile_adjustments, generator_params if user_profile else None
             )
             plan.add_week(week)
 
@@ -124,7 +126,7 @@ class PlanGenerator:
         return zones
 
     @classmethod
-    def _calculate_profile_adjustments(cls, user_profile: 'UserProfile') -> dict:
+    def _calculate_profile_adjustments(cls, user_profile: 'UserProfile', generator_params: Optional[dict] = None) -> dict:
         """
         Calculate training adjustments based on user profile.
 
@@ -142,6 +144,8 @@ class PlanGenerator:
         if not user_profile:
             return adjustments
 
+        generator_params = generator_params or {}
+
         # Adjust based on time availability
         if user_profile.hours_per_day > 0:
             # Convert hours to minutes
@@ -149,7 +153,9 @@ class PlanGenerator:
 
         # Adjust volume based on current weekly km vs target
         # If current volume is much lower than target, reduce initial volume
-        if user_profile.current_weekly_km > 0:
+        if generator_params.get('initial_volume_km'):
+            adjustments['starting_volume_km'] = generator_params['initial_volume_km']
+        elif user_profile.current_weekly_km > 0:
             # Start at current volume or slightly higher
             adjustments['starting_volume_km'] = user_profile.current_weekly_km * 1.1
 
@@ -218,13 +224,16 @@ class PlanGenerator:
         days_per_week: int,
         training_zones: Optional[TrainingZones] = None,
         user_profile: Optional['UserProfile'] = None,
-        profile_adjustments: dict = None
+        profile_adjustments: dict = None,
+        generator_params: Optional[dict] = None
     ) -> Week:
         """Generate a single week of training."""
         workouts = []
 
         if profile_adjustments is None:
             profile_adjustments = {}
+        if generator_params is None:
+            generator_params = {}
 
         # Calculate weekly distance based on progression
         target_distance = cls.GOAL_TARGETS.get(goal, {}).get(level, 30)
@@ -298,6 +307,15 @@ class PlanGenerator:
         else:
             raise ValueError(f"Unsupported days_per_week: {days_per_week}")
 
+        # Apply session selection preferences and zone mix from profile
+        if user_profile:
+            workouts = cls._apply_session_preferences(
+                workouts,
+                generator_params.get('session_preferences', user_profile.get_session_preferences()),
+                generator_params.get('zone_mix', user_profile.get_zone_mix()),
+                training_zones
+            )
+
         # Add notes for special weeks
         notes = ""
         if week_number == 1:
@@ -331,6 +349,74 @@ class PlanGenerator:
         week = Week(week_number=week_number, workouts=workouts, notes=notes)
         week.calculate_total_distance()
         return week
+
+    @classmethod
+    def _apply_session_preferences(
+        cls,
+        workouts: List[Workout],
+        session_preferences: Optional[dict],
+        zone_mix: Optional[dict],
+        training_zones: Optional[TrainingZones]
+    ) -> List[Workout]:
+        """Adjust generated workouts according to user session selections and desired zone mix."""
+        if not workouts:
+            return workouts
+
+        preferences = session_preferences or {}
+        zone_mix = zone_mix or {}
+
+        def is_rest(workout: Workout) -> bool:
+            return workout.type.lower() == "rest"
+
+        def convert_to_easy(workout: Workout) -> Workout:
+            if getattr(workout, "distance_km", None):
+                return cls._create_easy_run(workout.day, workout.distance_km, training_zones)
+            return workout
+
+        adjusted_workouts: List[Workout] = []
+
+        for workout in workouts:
+            if is_rest(workout):
+                adjusted_workouts.append(workout)
+                continue
+
+            w_type = workout.type.lower()
+            if ("interval" in w_type or "ritmo de prova" in w_type) and not preferences.get("intervals", True):
+                adjusted_workouts.append(convert_to_easy(workout))
+                continue
+            if "tempo" in w_type and not preferences.get("tempo", True):
+                adjusted_workouts.append(convert_to_easy(workout))
+                continue
+            if "long run" in w_type and not preferences.get("long_run", True):
+                adjusted_workouts.append(convert_to_easy(workout))
+                continue
+
+            adjusted_workouts.append(workout)
+
+        # Enforce desired easy-zone proportion if provided
+        desired_easy_share = zone_mix.get("easy") if isinstance(zone_mix, dict) else None
+        if desired_easy_share:
+            total_distance = sum(getattr(w, "distance_km", 0) or 0 for w in adjusted_workouts if not is_rest(w))
+            if total_distance > 0:
+                easy_distance = sum(
+                    getattr(w, "distance_km", 0) or 0
+                    for w in adjusted_workouts
+                    if (getattr(w, "training_zone", None) or "").lower() == "easy"
+                )
+                current_easy_share = easy_distance / total_distance if total_distance else 0
+
+                if current_easy_share < desired_easy_share:
+                    for idx, workout in enumerate(adjusted_workouts):
+                        if is_rest(workout):
+                            continue
+                        if (getattr(workout, "training_zone", None) or "").lower() != "easy":
+                            adjusted_workouts[idx] = convert_to_easy(workout)
+                            easy_distance += adjusted_workouts[idx].distance_km or 0
+                            current_easy_share = easy_distance / total_distance
+                            if current_easy_share >= desired_easy_share:
+                                break
+
+        return adjusted_workouts
 
     @classmethod
     def _limit_workout_by_time(cls, distance_km: float, max_minutes: Optional[int], training_zones: Optional[TrainingZones], zone: str = 'easy') -> float:
