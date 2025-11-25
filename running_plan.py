@@ -421,10 +421,23 @@ class RunningPlan:
         """Set the start date for the plan."""
         self.start_date = date
 
-    def set_event_info(self, distance: str, event_date: datetime):
-        """Store target event details."""
+    def set_event_info(
+        self,
+        distance: str,
+        event_date: datetime,
+        name: str = "",
+        location: str = "",
+        info_source: str = "",
+    ):
+        """Store target event details with optional metadata."""
 
-        self.event = EventInfo(distance=distance, date=event_date)
+        self.event = EventInfo(
+            distance=distance,
+            date=event_date,
+            name=name,
+            location=location,
+            info_source=info_source,
+        )
 
     def set_performance_targets(
         self,
@@ -490,6 +503,7 @@ class RunningPlan:
             hotter_or_more_humid=hotter_or_more_humid,
             more_gain_or_descents=more_gain_or_descents,
             colder_or_windier=colder_or_windier,
+        )
     def set_environmental_conditions(
         self,
         heat_humidity: bool = False,
@@ -625,7 +639,14 @@ class RunningPlan:
         result += f"🗓️  Dias de treino: {self.days_per_week} dias/semana\n"
 
         if self.event:
-            result += f"🏁 Prova alvo: {self.event.distance} em {self.event.date.strftime('%d/%m/%Y')}\n"
+            label_parts = [self.event.distance, self.event.date.strftime('%d/%m/%Y')]
+            if self.event.name:
+                label_parts.insert(0, self.event.name)
+            if self.event.location:
+                label_parts.append(self.event.location)
+            result += f"🏁 Prova alvo: {' - '.join(label_parts)}\n"
+            if self.event.info_source:
+                result += f"🔗 Fonte: {self.event.info_source}\n"
 
         if self.performance:
             perf_parts = []
@@ -660,7 +681,10 @@ class RunningPlan:
             result += f"🚀 Início: {self.start_date.strftime('%d/%m/%Y (%A)')}\n"
             race_date = self.get_race_date()
             if race_date:
-                result += f"🏁 Prova: {race_date.strftime('%d/%m/%Y (%A)')}\n"
+                race_label = race_date.strftime('%d/%m/%Y (%A)')
+                if self.event and self.event.name:
+                    race_label = f"{self.event.name} - {race_label}"
+                result += f"🏁 Prova: {race_label}\n"
 
         # Calculate total distance
         total_km = sum(w.total_distance_km for w in self.schedule)
@@ -814,7 +838,14 @@ class RunningPlan:
         result += f"Training Days: {self.days_per_week} days/week\n"
 
         if self.event:
-            result += f"Event: {self.event.distance} on {self.event.date.strftime('%Y-%m-%d')}\n"
+            event_parts = [self.event.distance, self.event.date.strftime('%Y-%m-%d')]
+            if self.event.name:
+                event_parts.insert(0, self.event.name)
+            if self.event.location:
+                event_parts.append(self.event.location)
+            result += f"Event: {' - '.join(event_parts)}\n"
+            if self.event.info_source:
+                result += f"Source: {self.event.info_source}\n"
 
         if self.performance:
             if self.performance.personal_best:
@@ -861,16 +892,28 @@ class EventInfo:
 
     distance: str
     date: datetime
+    name: str = ""
+    location: str = ""
+    info_source: str = ""
 
     def to_dict(self) -> Dict:
         return {
             "distance": self.distance,
             "date": self.date.isoformat(),
+            "name": self.name,
+            "location": self.location,
+            "info_source": self.info_source,
         }
 
     @classmethod
     def from_dict(cls, data: Dict) -> "EventInfo":
-        return cls(distance=data["distance"], date=datetime.fromisoformat(data["date"]))
+        return cls(
+            distance=data["distance"],
+            date=datetime.fromisoformat(data["date"]),
+            name=data.get("name", ""),
+            location=data.get("location", ""),
+            info_source=data.get("info_source", ""),
+        )
 
 
 @dataclass
