@@ -22,6 +22,13 @@ def round_to_nearest_30min(minutes: float) -> int:
     return max(30, round(minutes / 30) * 30)
 
 
+def round_to_nearest_5min(minutes: float) -> int:
+    """Round time to nearest 5-minute increment."""
+    if minutes == 0:
+        return 0
+    return int(round(minutes / 5) * 5)
+
+
 @dataclass
 class WorkoutSegment:
     """Represents a segment of a workout (warmup, intervals, cooldown, etc)."""
@@ -119,6 +126,14 @@ class Workout:
     target_pace: Optional[str] = None  # Target pace for main work (MM:SS/km)
     segments: List[WorkoutSegment] = field(default_factory=list)
     total_time_estimated: Optional[str] = None  # HH:MM:SS or MM:SS
+    total_minutes: Optional[int] = None
+
+    # Session logistics
+    warmup_minutes: int = 0
+    cooldown_minutes: int = 0
+    commute_minutes: int = 0
+    max_session_minutes: Optional[int] = None
+    surface_options: List[str] = field(default_factory=list)
 
     # Zone information
     training_zone: Optional[str] = None  # e.g., "easy", "threshold", "interval"

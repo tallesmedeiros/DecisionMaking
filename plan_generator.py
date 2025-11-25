@@ -2,7 +2,15 @@
 Plan Generator module for creating training schedules.
 Generates running plans based on goal, level, and duration.
 """
-from running_plan import RunningPlan, Week, Workout, WorkoutSegment, round_to_nearest_5km, round_to_nearest_30min
+from running_plan import (
+    RunningPlan,
+    Week,
+    Workout,
+    WorkoutSegment,
+    round_to_nearest_5km,
+    round_to_nearest_30min,
+    round_to_nearest_5min,
+)
 from training_zones import TrainingZones, RaceTime
 from typing import List, Optional, Tuple, TYPE_CHECKING
 from datetime import timedelta
@@ -298,6 +306,11 @@ class PlanGenerator:
         else:
             raise ValueError(f"Unsupported days_per_week: {days_per_week}")
 
+        # Apply schedule preferences (time blocks, surfaces, rounding)
+        workouts = cls._apply_schedule_preferences(
+            workouts, user_profile, training_zones, profile_adjustments
+        )
+
         # Add notes for special weeks
         notes = ""
         if week_number == 1:
@@ -362,6 +375,171 @@ class PlanGenerator:
         max_distance = (max_minutes * 60) / pace  # pace is in seconds per km
 
         return round(max_distance, 1)
+
+    @staticmethod
+    def _parse_pace_str(pace_str: Optional[str]) -> Optional[float]:
+        """Convert a pace string (MM:SS) to seconds per km."""
+        if not pace_str:
+            return None
+        try:
+            cleaned = pace_str.replace("/km", "")
+            minutes, seconds = cleaned.split(":")
+            return int(minutes) * 60 + int(seconds)
+        except (ValueError, AttributeError):
+            return None
+
+    @classmethod
+    def _compute_segment_minutes(cls, segment: WorkoutSegment, training_zones: Optional[TrainingZones], default_zone: str) -> float:
+        """Estimate total minutes for a segment (considering repetitions)."""
+        if segment.duration_minutes:
+            return segment.duration_minutes * max(1, segment.repetitions)
+
+        pace_seconds = cls._parse_pace_str(segment.pace_per_km)
+        if pace_seconds and segment.distance_km:
+            return (segment.distance_km * pace_seconds / 60) * max(1, segment.repetitions)
+
+        if training_zones and segment.distance_km:
+            pace = training_zones.get_zone_pace(default_zone, 'middle')
+            return (segment.distance_km * pace / 60) * max(1, segment.repetitions)
+
+        return 0.0
+
+    @classmethod
+    def _estimate_main_time(cls, workout: Workout, training_zones: Optional[TrainingZones]) -> float:
+        """Estimate the duration of the main part of the workout in minutes."""
+        if workout.duration_minutes:
+            return float(workout.duration_minutes)
+
+        if workout.distance_km and training_zones:
+            zone_map = {
+                "Easy Run": "easy",
+                "Long Run": "easy",
+                "Tempo Run": "threshold",
+                "Interval Training": "interval",
+                "Short Intervals": "interval",
+                "Long Intervals": "threshold",
+                "Fartlek": "threshold",
+                "Marathon Pace": "marathon",
+                "Hill Repeats": "interval",
+            }
+            zone = workout.training_zone or zone_map.get(workout.type, 'easy')
+            pace = training_zones.get_zone_pace(zone, 'middle')
+            return (workout.distance_km * pace) / 60
+
+        return 0.0
+
+    @staticmethod
+    def _format_minutes_to_str(total_minutes: int) -> str:
+        """Format minutes as a friendly string (HHhMM or MMmin)."""
+        if total_minutes >= 60:
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            if minutes == 0:
+                return f"{hours}h"
+            return f"{hours}h{minutes:02d}m"
+        return f"{total_minutes}min"
+
+    @staticmethod
+    def _is_warmup_segment(segment: WorkoutSegment) -> bool:
+        name = segment.name.lower()
+        return "aquec" in name or "warmup" in name
+
+    @staticmethod
+    def _is_cooldown_segment(segment: WorkoutSegment) -> bool:
+        name = segment.name.lower()
+        return "desaquec" in name or "cooldown" in name
+
+    @staticmethod
+    def _supports_speed_work(surfaces: List[str]) -> bool:
+        surfaces_lower = [s.lower() for s in surfaces]
+        return any(s in surfaces_lower for s in ["pista", "track", "esteira", "treadmill"])
+
+    @classmethod
+    def _apply_time_components(
+        cls,
+        workout: Workout,
+        training_zones: Optional[TrainingZones],
+        user_profile: Optional['UserProfile'],
+        max_session_minutes: Optional[int] = None
+    ) -> Workout:
+        """Add warmup/cooldown/commute buffers and round total time."""
+        if workout.type == "Rest":
+            workout.total_minutes = 0
+            workout.total_time_estimated = "0min"
+            workout.max_session_minutes = max_session_minutes
+            return workout
+
+        warmup_default = user_profile.default_warmup_minutes if user_profile else 0
+        cooldown_default = user_profile.default_cooldown_minutes if user_profile else 0
+        commute_minutes = user_profile.commute_minutes if user_profile else 0
+
+        warmup_minutes = 0.0
+        cooldown_minutes = 0.0
+        main_minutes = 0.0
+
+        if workout.segments:
+            for segment in workout.segments:
+                seg_minutes = cls._compute_segment_minutes(segment, training_zones, workout.training_zone or 'easy')
+                if cls._is_warmup_segment(segment):
+                    warmup_minutes += seg_minutes
+                elif cls._is_cooldown_segment(segment):
+                    cooldown_minutes += seg_minutes
+                else:
+                    main_minutes += seg_minutes
+        else:
+            warmup_minutes = warmup_default
+            cooldown_minutes = cooldown_default
+            main_minutes = cls._estimate_main_time(workout, training_zones)
+
+        total_minutes = warmup_minutes + main_minutes + cooldown_minutes + commute_minutes
+
+        if max_session_minutes:
+            total_minutes = min(total_minutes, max_session_minutes)
+
+        rounded_total = round_to_nearest_5min(total_minutes)
+
+        workout.warmup_minutes = int(round(warmup_minutes))
+        workout.cooldown_minutes = int(round(cooldown_minutes))
+        workout.commute_minutes = int(round(commute_minutes))
+        workout.max_session_minutes = max_session_minutes
+        workout.total_minutes = int(rounded_total)
+        workout.total_time_estimated = cls._format_minutes_to_str(workout.total_minutes)
+
+        return workout
+
+    @classmethod
+    def _apply_schedule_preferences(
+        cls,
+        workouts: List[Workout],
+        user_profile: Optional['UserProfile'],
+        training_zones: Optional[TrainingZones],
+        profile_adjustments: dict
+    ) -> List[Workout]:
+        """Annotate workouts with schedule data and rounded times."""
+        default_max = profile_adjustments.get('max_workout_minutes')
+
+        for workout in workouts:
+            day_max = None
+            surfaces: List[str] = []
+
+            if user_profile:
+                day_max = user_profile.get_max_session_minutes(workout.day) or default_max
+                surfaces = user_profile.get_surfaces_for_day(workout.day)
+
+            if not day_max:
+                day_max = default_max
+
+            workout.surface_options = [s.lower() for s in surfaces]
+
+            # Add guidance for speed sessions without suitable surfaces
+            if workout.type in ["Interval Training", "Short Intervals", "Long Intervals"]:
+                if not cls._supports_speed_work(workout.surface_options):
+                    appendix = "Use tiros em colina ou fartlek se não houver pista/esteira."
+                    workout.description = f"{workout.description} {appendix}".strip()
+
+            cls._apply_time_components(workout, training_zones, user_profile, day_max)
+
+        return workouts
 
     @classmethod
     def _create_easy_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:

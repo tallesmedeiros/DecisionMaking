@@ -61,6 +61,12 @@ class UserProfile:
     hours_per_day: float = 1.0
     preferred_time: str = ""  # "morning", "afternoon", "evening"
     preferred_location: List[str] = field(default_factory=list)  # "track", "road", "trail", "treadmill"
+    weekly_schedule: Dict[str, List[Dict[str, object]]] = field(default_factory=dict)
+
+    # Session logistics
+    default_warmup_minutes: int = 10
+    default_cooldown_minutes: int = 10
+    commute_minutes: int = 0
 
     # Training Zones (Recent Race Times)
     recent_race_times: Dict[str, str] = field(default_factory=dict)  # {"5K": "22:30", "10K": "47:15"}
@@ -192,6 +198,37 @@ class UserProfile:
         else:  # advanced
             return self.days_per_week
 
+    def get_day_schedule(self, day: str) -> List[Dict[str, object]]:
+        """Return time blocks for a given day name (case-insensitive)."""
+        normalized_day = day.capitalize()
+        return self.weekly_schedule.get(normalized_day, self.weekly_schedule.get(day, []))
+
+    def get_max_session_minutes(self, day: str) -> Optional[int]:
+        """Return the most restrictive max session duration for the day."""
+        blocks = self.get_day_schedule(day)
+        max_values = [b.get('max_minutes') for b in blocks if b.get('max_minutes')]
+        if max_values:
+            return min(int(v) for v in max_values)
+        if self.hours_per_day:
+            return int(self.hours_per_day * 60)
+        return None
+
+    def get_surfaces_for_day(self, day: str) -> List[str]:
+        """Return available surfaces for the day (from schedule or preferences)."""
+        blocks = self.get_day_schedule(day)
+        surfaces = []
+        for block in blocks:
+            surfaces.extend(block.get('surfaces', []))
+        # Fallback to general preference
+        if not surfaces and self.preferred_location:
+            surfaces.extend(self.preferred_location)
+        # Normalize and deduplicate
+        normalized = []
+        for surface in surfaces:
+            if surface and surface not in normalized:
+                normalized.append(surface)
+        return normalized
+
     def needs_modified_plan(self) -> Tuple[bool, List[str]]:
         """
         Check if plan needs modifications based on profile.
@@ -307,6 +344,21 @@ class UserProfile:
             result += f"Horário preferido: {self.preferred_time}\n"
         if self.preferred_location:
             result += f"Local preferido: {', '.join(self.preferred_location)}\n"
+
+        if self.weekly_schedule:
+            result += "Grade semanal:\n"
+            for day, blocks in self.weekly_schedule.items():
+                for block in blocks:
+                    start = block.get('start', '')
+                    end = block.get('end', '')
+                    max_minutes = block.get('max_minutes')
+                    surfaces = ", ".join(block.get('surfaces', []))
+                    block_str = f"   • {day}: {start}-{end}" if start or end else f"   • {day}"
+                    if max_minutes:
+                        block_str += f" | Máx: {max_minutes}min"
+                    if surfaces:
+                        block_str += f" | Acessos: {surfaces}"
+                    result += block_str + "\n"
 
         # Training zones
         if self.recent_race_times:
