@@ -74,6 +74,26 @@ class PlanCreatorWidgets:
             layout=widgets.Layout(width='400px')
         )
 
+        self.fc_repouso_widget = widgets.BoundedIntText(
+            value=0,
+            min=0,
+            max=120,
+            description='FC repouso:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px'),
+            placeholder='Opcional'
+        )
+
+        self.fc_max_widget = widgets.BoundedIntText(
+            value=0,
+            min=0,
+            max=240,
+            description='FC máxima:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px'),
+            placeholder='Opcional'
+        )
+
         # Widgets para experiência
         self.anos_correndo_widget = widgets.FloatSlider(
             value=2.0,
@@ -205,6 +225,26 @@ class PlanCreatorWidgets:
             layout=widgets.Layout(width='400px')
         )
 
+        self.prova_recente_dist_widget = widgets.Dropdown(
+            options=[('5K', '5K'), ('10K', '10K'), ('15K', '15K'), ('Meia (21K)', '21K'), ('Maratona (42K)', '42K')],
+            value='10K',
+            description='Prova recente:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.prova_recente_tempo_widget = widgets.Text(
+            value='',
+            placeholder='MM:SS ou HH:MM:SS',
+            description='Tempo recente:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.vdot_info_widget = widgets.HTML(
+            value="<i>Preencha distância e tempo recente para estimar VDOT (Jack Daniels).</i>"
+        )
+
         self.metodo_zonas_widget = widgets.Dropdown(
             options=[('Jack Daniels (recomendado)', 'jack_daniels'), ('Velocidade Crítica', 'critical_velocity')],
             value='jack_daniels',
@@ -241,6 +281,9 @@ class PlanCreatorWidgets:
         display(self.peso_widget)
         display(self.altura_widget)
         display(self.sexo_widget)
+        display(HTML("<p><i>Use FC de repouso/máxima para validar fadiga (opcional).</i></p>"))
+        display(self.fc_repouso_widget)
+        display(self.fc_max_widget)
 
     def show_experience(self):
         """Mostra widgets para experiência em corrida."""
@@ -273,6 +316,10 @@ class PlanCreatorWidgets:
         display(self.tempo_10k_widget)
         display(self.tempo_21k_widget)
         display(self.tempo_42k_widget)
+        display(HTML("<p><b>Prova mais recente (para estimar VDOT):</b></p>"))
+        display(self.prova_recente_dist_widget)
+        display(self.prova_recente_tempo_widget)
+        display(self.vdot_info_widget)
         display(self.metodo_zonas_widget)
 
     def show_injuries(self):
@@ -292,6 +339,10 @@ class PlanCreatorWidgets:
             height_cm=self.altura_widget.value,
             gender=self.sexo_widget.value
         )
+
+        # Frequência cardíaca (opcional)
+        self.profile.hr_resting = self.fc_repouso_widget.value or None
+        self.profile.hr_max = self.fc_max_widget.value or None
 
         # Experiência
         self.profile.years_running = self.anos_correndo_widget.value
@@ -323,6 +374,9 @@ class PlanCreatorWidgets:
         if self.tempo_42k_widget.value:
             self.profile.recent_race_times["42K"] = self.tempo_42k_widget.value
 
+        # Prova recente para estimativa de VDOT
+        self._estimate_vdot_from_recent_race()
+
         self.profile.zones_calculation_method = self.metodo_zonas_widget.value
 
         # Lesões
@@ -333,6 +387,45 @@ class PlanCreatorWidgets:
         self.profile.last_updated = datetime.now()
 
         return self.profile
+
+    def _estimate_vdot_from_recent_race(self):
+        """Calcula VDOT a partir da prova recente informada."""
+        recent_time = self.prova_recente_tempo_widget.value.strip()
+        if not recent_time:
+            self.profile.vdot_estimate = None
+            self.vdot_info_widget.value = "<i>Preencha distância e tempo recente para estimar VDOT (Jack Daniels).</i>"
+            return
+
+        distance_map = {
+            "5K": 5.0,
+            "10K": 10.0,
+            "15K": 15.0,
+            "21K": 21.0975,
+            "42K": 42.195,
+        }
+
+        distance_label = self.prova_recente_dist_widget.value
+        distance_km = distance_map.get(distance_label)
+
+        if not distance_km:
+            self.profile.vdot_estimate = None
+            self.vdot_info_widget.value = "<b style='color:red'>Distância inválida para cálculo de VDOT.</b>"
+            return
+
+        try:
+            race_time = RaceTime.from_time_string(distance_km, recent_time)
+        except ValueError:
+            self.profile.vdot_estimate = None
+            self.vdot_info_widget.value = "<b style='color:red'>Formato de tempo inválido. Use MM:SS ou HH:MM:SS.</b>"
+            return
+
+        zones = TrainingZones(method='jack_daniels')
+        zones.add_race_time("Prova Recente", race_time)
+        zones.calculate_zones()
+
+        self.profile.vdot_estimate = zones.vdot
+        self.profile.recent_race_times[distance_label] = recent_time
+        self.vdot_info_widget.value = f"<b>VDOT estimado:</b> {zones.vdot:.1f} (Jack Daniels)"
 
     def generate_plan(self):
         """Gera o plano de treino baseado no perfil."""
