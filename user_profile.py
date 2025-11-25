@@ -5,6 +5,7 @@ Stores comprehensive user information for personalized training plans.
 from datetime import datetime, date
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field, asdict
+from copy import deepcopy
 import json
 
 
@@ -239,6 +240,17 @@ class UserProfile:
         """Save profile to JSON file."""
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+    def clone_with_updates(self, **updates) -> 'UserProfile':
+        """Create an editable clone of the profile, applying provided updates."""
+        new_profile = deepcopy(self)
+
+        for key, value in updates.items():
+            if hasattr(new_profile, key):
+                setattr(new_profile, key, value)
+
+        new_profile.last_updated = datetime.now()
+        return new_profile
 
     @classmethod
     def load_from_file(cls, filename: str) -> 'UserProfile':
