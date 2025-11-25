@@ -3,9 +3,12 @@ Core module for Running Plan management.
 Defines the main classes and data structures for running plans.
 """
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 import json
 from dataclasses import dataclass, asdict, field
+
+if TYPE_CHECKING:
+    from training_zones import TrainingZones
 
 
 def round_to_nearest_5km(distance_km: float) -> float:
@@ -244,6 +247,27 @@ class Workout:
 
 
 @dataclass
+class WeeklyCheckIn:
+    """Short weekly check-in to capture readiness and trigger adjustments."""
+
+    week_number: int
+    energy_level: int
+    muscle_soreness: int
+    sleep_hours: float
+    motivation: int
+    notes: str = ""
+    fatigue_flag: bool = False
+    vdot_after_update: Optional[float] = None
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "WeeklyCheckIn":
+        return cls(**data)
+
+
+@dataclass
 class Week:
     """Represents a week of training."""
     week_number: int
@@ -374,10 +398,13 @@ class RunningPlan:
         self.schedule: List[Week] = []
         self.start_date: Optional[datetime] = None
         self.created_date = datetime.now()
+        self.weekly_checkins: List[WeeklyCheckIn] = []
+        self.adjustments_log: List[str] = []
         self.event: Optional[EventInfo] = None
         self.performance: Optional[PerformanceTargets] = None
         self.training_context: TrainingContext = TrainingContext()
         self.environment_strategy: EnvironmentStrategy = EnvironmentStrategy()
+        self.environmental_preparation: "EnvironmentalPreparation" = EnvironmentalPreparation()
 
     def add_week(self, week: Week):
         """Add a week to the training schedule."""
@@ -463,6 +490,20 @@ class RunningPlan:
             hotter_or_more_humid=hotter_or_more_humid,
             more_gain_or_descents=more_gain_or_descents,
             colder_or_windier=colder_or_windier,
+    def set_environmental_conditions(
+        self,
+        heat_humidity: bool = False,
+        altitude: bool = False,
+        hilly_course: bool = False,
+        technical_course: bool = False,
+    ):
+        """Store course-specific conditions to surface targeted adaptations."""
+
+        self.environmental_preparation = EnvironmentalPreparation(
+            heat_humidity=heat_humidity,
+            altitude=altitude,
+            hilly_course=hilly_course,
+            technical_course=technical_course,
         )
 
     def get_race_date(self) -> Optional[datetime]:
@@ -485,6 +526,9 @@ class RunningPlan:
             "performance": self.performance.to_dict() if self.performance else None,
             "training_context": self.training_context.to_dict() if self.training_context else None,
             "environment_strategy": self.environment_strategy.to_dict() if self.environment_strategy else None,
+            "environmental_preparation": self.environmental_preparation.to_dict()
+            if self.environmental_preparation
+            else None,
             "schedule": [
                 {
                     "week_number": week.week_number,
@@ -493,7 +537,9 @@ class RunningPlan:
                     "workouts": [asdict(w) for w in week.workouts]
                 }
                 for week in self.schedule
-            ]
+            ],
+            "weekly_checkins": [checkin.to_dict() for checkin in self.weekly_checkins],
+            "adjustments_log": self.adjustments_log,
         }
 
     def save_to_file(self, filename: str):
@@ -519,6 +565,7 @@ class RunningPlan:
             plan.start_date = datetime.fromisoformat(data["start_date"])
 
         plan.created_date = datetime.fromisoformat(data["created_date"])
+        plan.adjustments_log = data.get("adjustments_log", [])
 
         if data.get("event"):
             plan.event = EventInfo.from_dict(data["event"])
@@ -531,6 +578,10 @@ class RunningPlan:
 
         if data.get("environment_strategy"):
             plan.environment_strategy = EnvironmentStrategy.from_dict(data["environment_strategy"])
+        if data.get("environmental_preparation"):
+            plan.environmental_preparation = EnvironmentalPreparation.from_dict(
+                data["environmental_preparation"]
+            )
 
         # Reconstruct schedule
         for week_data in data["schedule"]:
@@ -550,6 +601,10 @@ class RunningPlan:
                 notes=week_data.get("notes", "")
             )
             plan.add_week(week)
+
+        # Reconstruct check-ins
+        for checkin_data in data.get("weekly_checkins", []):
+            plan.weekly_checkins.append(WeeklyCheckIn.from_dict(checkin_data))
 
         return plan
 
@@ -596,6 +651,10 @@ class RunningPlan:
             result += "🌤️ Ajustes para condições da prova:\n"
             for recommendation in self.environment_strategy.recommendations():
                 result += f"• {recommendation}\n"
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "🌍 Ajustes para condições da prova:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"  • {tip}\n"
 
         if self.start_date:
             result += f"🚀 Início: {self.start_date.strftime('%d/%m/%Y (%A)')}\n"
@@ -636,6 +695,93 @@ class RunningPlan:
             result += f"💡 Ou .to_visual_str(week_range=(3, 6)) para ver semanas específicas\n"
 
         return result
+
+    def record_weekly_checkin(
+        self,
+        week_number: int,
+        energy_level: int,
+        muscle_soreness: int,
+        sleep_hours: float,
+        motivation: int,
+        notes: str = "",
+        training_zones: Optional["TrainingZones"] = None,
+        new_reference: Optional[Tuple[str, str]] = None,
+    ) -> WeeklyCheckIn:
+        """
+        Registrar um check-in semanal curto e ajustar o plano em caso de fadiga.
+
+        Args:
+            week_number: Semana referente ao feedback.
+            energy_level: Escala 1-10 (10 = cheio de energia).
+            muscle_soreness: Escala 1-10 (10 = dor intensa).
+            sleep_hours: Média de horas de sono por noite.
+            motivation: Escala 1-10 (10 = motivação alta).
+            notes: Observações adicionais do atleta.
+            training_zones: Instância para recalcular VDOT caso fornecida.
+            new_reference: Par (distância, tempo) para atualizar VDOT.
+        """
+        fatigue_signals = 0
+        if energy_level <= 4:
+            fatigue_signals += 1
+        if muscle_soreness >= 7:
+            fatigue_signals += 1
+        if sleep_hours < 6:
+            fatigue_signals += 1
+        if motivation <= 4:
+            fatigue_signals += 1
+
+        fatigue_flag = fatigue_signals >= 2
+
+        vdot_after_update = None
+        if training_zones and new_reference:
+            distance_label, time_str = new_reference
+            vdot_after_update = training_zones.update_reference_result(distance_label, time_str, source="check-in")
+
+        checkin = WeeklyCheckIn(
+            week_number=week_number,
+            energy_level=energy_level,
+            muscle_soreness=muscle_soreness,
+            sleep_hours=sleep_hours,
+            motivation=motivation,
+            notes=notes,
+            fatigue_flag=fatigue_flag,
+            vdot_after_update=vdot_after_update,
+        )
+        self.weekly_checkins.append(checkin)
+
+        if fatigue_flag:
+            self._apply_fatigue_adjustments(week_number + 1)
+
+        return checkin
+
+    def _apply_fatigue_adjustments(self, target_week_number: int):
+        """Reduce next week's volume/intensity when fatigue is detected and log changes."""
+        target_week = self.get_week(target_week_number)
+        if not target_week:
+            return
+
+        for workout in target_week.workouts:
+            if workout.type == "Rest":
+                continue
+
+            if workout.distance_km:
+                adjusted_distance = max(0.0, round(workout.distance_km * 0.85, 1))
+                if adjusted_distance != workout.distance_km:
+                    workout.distance_km = adjusted_distance
+
+            if workout.duration_minutes:
+                workout.duration_minutes = int(workout.duration_minutes * 0.9)
+
+            if workout.type in {"Interval Training", "Tempo Run"}:
+                prefix = "(Reduzido por fadiga) "
+                workout.description = prefix + workout.description if workout.description else prefix
+
+        target_week.calculate_total_distance()
+        adjustment_note = (
+            f"Semana {target_week_number}: volume/intensidade reduzidos em ~15% por sinais de fadiga."
+        )
+        target_week.notes = f"{adjustment_note} {target_week.notes}".strip()
+        self.adjustments_log.append(adjustment_note)
 
     def print_visual(self, **kwargs):
         """Print visual representation of the plan."""
@@ -690,6 +836,10 @@ class RunningPlan:
             result += "Environment adjustments:\n"
             for recommendation in self.environment_strategy.recommendations():
                 result += f"- {recommendation}\n"
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "Environment Considerations:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"- {tip}\n"
 
         if self.start_date:
             result += f"Start Date: {self.start_date.strftime('%Y-%m-%d')}\n"
@@ -703,6 +853,8 @@ class RunningPlan:
             result += str(week)
 
         return result
+
+
 @dataclass
 class EventInfo:
     """Information about the target event."""
@@ -745,6 +897,68 @@ class PerformanceTargets:
             goal_time=data.get("goal_time"),
             goal_pace_per_km=data.get("goal_pace_per_km"),
             gap_vs_pb=data.get("gap_vs_pb"),
+        )
+
+
+@dataclass
+class EnvironmentalPreparation:
+    """Conditions-specific adaptations for race preparation."""
+
+    heat_humidity: bool = False
+    altitude: bool = False
+    hilly_course: bool = False
+    technical_course: bool = False
+
+    def has_any_condition(self) -> bool:
+        return any([self.heat_humidity, self.altitude, self.hilly_course, self.technical_course])
+
+    def get_recommendations(self) -> List[str]:
+        """Return actionable tips based on selected conditions."""
+
+        tips: List[str] = []
+
+        if self.heat_humidity:
+            tips.append(
+                "Calor/Umidade: programe 2–3 semanas de aclimatação progressiva (5–7 sessões de 30–60min) "
+                "no horário mais quente ou indoor com camadas extras; monitore hidratação por pesagem pré/pós "
+                "e planeje reposição de eletrólitos."
+            )
+
+        if self.altitude:
+            tips.append(
+                "Altitude: inclua simulações moderadas (bivaque/serra) ou treinos de tolerância à hipóxia suave, "
+                "mantendo a intensidade controlada nos primeiros dias."
+            )
+
+        if self.hilly_course:
+            tips.append(
+                "Colinas: faça 1–2 sessões semanais de força em subida (repetições curtas/longas) e rodagens em "
+                "terreno ondulado; pratique descidas para preparar o quadríceps."
+            )
+
+        if self.technical_course:
+            tips.append(
+                "Terreno técnico: realize sessões em trilha similar, trabalhe propriocepção/tornozelo e escolha "
+                "tênis com aderência adequada."
+            )
+
+        return tips
+
+    def to_dict(self) -> Dict:
+        return {
+            "heat_humidity": self.heat_humidity,
+            "altitude": self.altitude,
+            "hilly_course": self.hilly_course,
+            "technical_course": self.technical_course,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "EnvironmentalPreparation":
+        return cls(
+            heat_humidity=data.get("heat_humidity", False),
+            altitude=data.get("altitude", False),
+            hilly_course=data.get("hilly_course", False),
+            technical_course=data.get("technical_course", False),
         )
 
 

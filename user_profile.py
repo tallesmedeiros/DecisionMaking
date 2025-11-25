@@ -5,6 +5,7 @@ Stores comprehensive user information for personalized training plans.
 from datetime import datetime, date
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field, asdict
+from copy import deepcopy
 import json
 
 
@@ -66,6 +67,7 @@ class UserProfile:
     hours_per_day: float = 1.0
     preferred_time: str = ""  # "morning", "afternoon", "evening"
     preferred_location: List[str] = field(default_factory=list)  # "track", "road", "trail", "treadmill"
+    preferred_days: List[str] = field(default_factory=list)
     stressful_blocks: Dict[str, List[str]] = field(default_factory=dict)  # {"Monday": ["evening"], "Thursday": ["morning"]}
     long_run_preference_days: List[str] = field(default_factory=list)  # Days with more free time for long runs
     use_alternating_weeks: bool = False
@@ -78,14 +80,35 @@ class UserProfile:
     default_cooldown_minutes: int = 10
     commute_minutes: int = 0
 
+    # Training Preferences
+    typical_key_workout_rpe: Optional[int] = None  # Perceived effort on key sessions (1-10)
+    long_session_tolerance: str = ""  # "baixa", "moderada", "alta" ou descrição livre
+    variety_preference: str = ""  # Preferência por rotatividade/variedade
+    social_training_options: List[str] = field(default_factory=list)  # Clubes, parceiros, grupos
+    routine_vs_fun_balance: str = ""  # "rotina", "diversao", "equilibrado"
+
     # Training Zones (Recent Race Times)
     recent_race_times: Dict[str, str] = field(default_factory=dict)  # {"5K": "22:30", "10K": "47:15"}
     zones_calculation_method: str = "jack_daniels"  # "jack_daniels" or "critical_velocity"
+    zone_mix_preference: Dict[str, float] = field(default_factory=lambda: {
+        "easy": 0.55,
+        "tempo": 0.25,
+        "interval": 0.20,
+    })
     vdot_estimate: Optional[float] = None
 
     # Heart Rate (optional)
     hr_resting: Optional[int] = None
     hr_max: Optional[int] = None
+
+    # Training structure preferences
+    initial_weekly_km: Optional[float] = None
+    session_preferences: Dict[str, bool] = field(default_factory=lambda: {
+        "intervals": True,
+        "tempo": True,
+        "long_run": True,
+        "cross_training": False,
+    })
 
     # Injury History
     previous_injuries: List[str] = field(default_factory=list)
@@ -180,9 +203,50 @@ class UserProfile:
             return int(208 - (0.7 * self.age))
         return 0
 
+    def get_initial_volume_km(self) -> float:
+        """Return starting weekly volume used by the plan generator."""
+        if self.initial_weekly_km and self.initial_weekly_km > 0:
+            return float(self.initial_weekly_km)
+        if self.current_weekly_km > 0:
+            return round(self.current_weekly_km * 1.1, 1)
+        # Fallback based on experience level
+        level_defaults = {"beginner": 20.0, "intermediate": 30.0, "advanced": 40.0}
+        return level_defaults.get(self.experience_level, 20.0)
+
     def get_weekly_time_budget(self) -> float:
         """Calculate total weekly time budget in hours."""
         return self.days_per_week * self.hours_per_day
+
+    def get_zone_mix(self) -> Dict[str, float]:
+        """Return normalized training zone mix preferences."""
+        mix = {**self.zone_mix_preference}
+        total = sum(mix.values()) or 1.0
+        return {zone: round(value / total, 2) for zone, value in mix.items()}
+
+    def get_session_preferences(self) -> Dict[str, bool]:
+        """Return session-type selections with sensible defaults."""
+        defaults = {
+            "intervals": True,
+            "tempo": True,
+            "long_run": True,
+            "cross_training": False,
+        }
+        combined = {**defaults, **self.session_preferences}
+        # If injury risk is high, automatically reduce intensity
+        if self.get_injury_risk_level() == "Alto":
+            combined["intervals"] = False
+        return combined
+
+    def to_generator_params(self) -> Dict[str, object]:
+        """Map profile information to PlanGenerator-friendly parameters."""
+        return {
+            "initial_volume_km": self.get_initial_volume_km(),
+            "days_per_week": self.get_recommended_days_per_week(),
+            "zone_mix": self.get_zone_mix(),
+            "session_preferences": self.get_session_preferences(),
+            "preferred_days": self.preferred_days,
+            "time_budget_hours": self.get_weekly_time_budget(),
+        }
 
     def has_injury_history(self, injury_type: str) -> bool:
         """Check if user has history of specific injury."""
@@ -308,8 +372,20 @@ class UserProfile:
 
     def save_to_file(self, filename: str):
         """Save profile to JSON file."""
+        self.last_updated = datetime.now()
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+    def clone_with_updates(self, **updates) -> 'UserProfile':
+        """Create an editable clone of the profile, applying provided updates."""
+        new_profile = deepcopy(self)
+
+        for key, value in updates.items():
+            if hasattr(new_profile, key):
+                setattr(new_profile, key, value)
+
+        new_profile.last_updated = datetime.now()
+        return new_profile
 
     @classmethod
     def load_from_file(cls, filename: str) -> 'UserProfile':
@@ -420,6 +496,26 @@ class UserProfile:
                     if surfaces:
                         block_str += f" | Acessos: {surfaces}"
                     result += block_str + "\n"
+
+        # Training preferences
+        if any([
+            self.typical_key_workout_rpe,
+            self.long_session_tolerance,
+            self.variety_preference,
+            self.social_training_options,
+            self.routine_vs_fun_balance
+        ]):
+            result += "\n🎛️ Preferências de Treino:\n"
+            if self.typical_key_workout_rpe:
+                result += f"   RPE típico em treinos-chave: {self.typical_key_workout_rpe}/10\n"
+            if self.long_session_tolerance:
+                result += f"   Tolerância a sessões longas: {self.long_session_tolerance}\n"
+            if self.variety_preference:
+                result += f"   Preferência por variedade: {self.variety_preference}\n"
+            if self.social_training_options:
+                result += f"   Treinos sociais possíveis: {', '.join(self.social_training_options)}\n"
+            if self.routine_vs_fun_balance:
+                result += f"   Estilo (rotina vs diversão): {self.routine_vs_fun_balance}\n"
 
         # Training zones
         if self.recent_race_times:
