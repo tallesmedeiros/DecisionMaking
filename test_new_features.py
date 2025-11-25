@@ -8,7 +8,7 @@ Test script for new features:
 """
 from training_zones import TrainingZones, RaceTime
 from plan_generator import PlanGenerator
-from running_plan import round_to_nearest_5km, round_to_nearest_30min
+from running_plan import round_to_nearest_5km, round_to_nearest_30min, round_to_nearest_5min
 from datetime import datetime, date, timedelta
 
 print("="*80)
@@ -22,6 +22,8 @@ print(f"   12.7km → {round_to_nearest_5km(12.7)}km (esperado: 15km)")
 print(f"   23.2km → {round_to_nearest_5km(23.2)}km (esperado: 25km)")
 print(f"   45min → {round_to_nearest_30min(45)}min (esperado: 30min)")
 print(f"   75min → {round_to_nearest_30min(75)}min (esperado: 90min)")
+print(f"   43min → {round_to_nearest_5min(43)}min (esperado: 45min)")
+print(f"   62min → {round_to_nearest_5min(62)}min (esperado: 60min)")
 print("   ✅ Arredondamento funcionando!")
 
 # Test 2: Training zones visual table

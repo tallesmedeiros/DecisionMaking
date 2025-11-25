@@ -49,6 +49,11 @@ class UserProfile:
     # Running Experience
     years_running: float = 0.0
     current_weekly_km: float = 0.0
+    average_weekly_km: float = 0.0  # Média de volume nas últimas semanas
+    recent_peak_weekly_km: float = 0.0  # Maior volume recente
+    consistent_days_per_week: int = 0  # Dias/semana já mantidos
+    tolerated_workouts: List[str] = field(default_factory=list)  # Tipos de treinos já tolerados
+    adherence_score: Optional[float] = None  # % de aderência a planos anteriores
     experience_level: str = "beginner"  # "beginner", "intermediate", "advanced"
 
     # Goals
@@ -66,10 +71,17 @@ class UserProfile:
     use_alternating_weeks: bool = False
     alternate_stressful_blocks: Dict[str, List[str]] = field(default_factory=dict)
     alternate_long_run_days: List[str] = field(default_factory=list)
+    weekly_schedule: Dict[str, List[Dict[str, object]]] = field(default_factory=dict)
+
+    # Session logistics
+    default_warmup_minutes: int = 10
+    default_cooldown_minutes: int = 10
+    commute_minutes: int = 0
 
     # Training Zones (Recent Race Times)
     recent_race_times: Dict[str, str] = field(default_factory=dict)  # {"5K": "22:30", "10K": "47:15"}
     zones_calculation_method: str = "jack_daniels"  # "jack_daniels" or "critical_velocity"
+    vdot_estimate: Optional[float] = None
 
     # Heart Rate (optional)
     hr_resting: Optional[int] = None
@@ -78,9 +90,16 @@ class UserProfile:
     # Injury History
     previous_injuries: List[str] = field(default_factory=list)
     current_injuries: List[str] = field(default_factory=list)
+    injury_triggers: List[str] = field(default_factory=list)  # Gatilhos que agravam sintomas
+    red_zones: List[str] = field(default_factory=list)  # Restrições críticas para evitar overload
 
     # Equipment Access
     available_equipment: List[str] = field(default_factory=list)
+
+    # Prevention & Impact Management
+    strength_routines: List[str] = field(default_factory=list)  # Exercícios de força/prevenção em uso
+    impact_limitations: List[str] = field(default_factory=list)  # Ex.: evitar descidas, superfícies duras
+    feedback_required: bool = True  # Solicitar feedback frequente para ajustes
 
     # Metadata
     created_date: datetime = field(default_factory=datetime.now)
@@ -119,6 +138,16 @@ class UserProfile:
         "Rolo de Massagem/Foam Roller",
         "Faixas de Resistência",
         "Academia"
+    ]
+
+    TOLERATED_WORKOUT_OPTIONS = [
+        "Corridas fáceis/rodagens",
+        "Intervalos curtos",
+        "Intervalos longos",
+        "Tempo run",
+        "Fartlek",
+        "Longões progressivos",
+        "Treino de trilha/terreno variado"
     ]
 
     def calculate_bmi(self) -> float:
@@ -197,6 +226,37 @@ class UserProfile:
         else:  # advanced
             return self.days_per_week
 
+    def get_day_schedule(self, day: str) -> List[Dict[str, object]]:
+        """Return time blocks for a given day name (case-insensitive)."""
+        normalized_day = day.capitalize()
+        return self.weekly_schedule.get(normalized_day, self.weekly_schedule.get(day, []))
+
+    def get_max_session_minutes(self, day: str) -> Optional[int]:
+        """Return the most restrictive max session duration for the day."""
+        blocks = self.get_day_schedule(day)
+        max_values = [b.get('max_minutes') for b in blocks if b.get('max_minutes')]
+        if max_values:
+            return min(int(v) for v in max_values)
+        if self.hours_per_day:
+            return int(self.hours_per_day * 60)
+        return None
+
+    def get_surfaces_for_day(self, day: str) -> List[str]:
+        """Return available surfaces for the day (from schedule or preferences)."""
+        blocks = self.get_day_schedule(day)
+        surfaces = []
+        for block in blocks:
+            surfaces.extend(block.get('surfaces', []))
+        # Fallback to general preference
+        if not surfaces and self.preferred_location:
+            surfaces.extend(self.preferred_location)
+        # Normalize and deduplicate
+        normalized = []
+        for surface in surfaces:
+            if surface and surface not in normalized:
+                normalized.append(surface)
+        return normalized
+
     def needs_modified_plan(self) -> Tuple[bool, List[str]]:
         """
         Check if plan needs modifications based on profile.
@@ -223,6 +283,12 @@ class UserProfile:
 
         if self.get_weekly_time_budget() < 3:
             modifications.append("Pouco tempo disponível - treinos mais curtos")
+
+        if self.red_zones:
+            modifications.append(f"Zonas vermelhas a respeitar: {', '.join(self.red_zones)}")
+
+        if self.impact_limitations:
+            modifications.append(f"Limites de impacto: {', '.join(self.impact_limitations)}")
 
         return (len(modifications) > 0, modifications)
 
@@ -283,6 +349,16 @@ class UserProfile:
         result += f"\n📊 Experiência: {self.years_running} anos correndo\n"
         result += f"Nível: {self.experience_level.capitalize()}\n"
         result += f"Kilometragem semanal atual: {self.current_weekly_km}km\n"
+        if self.average_weekly_km:
+            result += f"Volume médio recente: {self.average_weekly_km}km/sem\n"
+        if self.recent_peak_weekly_km:
+            result += f"Pico recente: {self.recent_peak_weekly_km}km/sem\n"
+        if self.consistent_days_per_week:
+            result += f"Dias mantidos por semana: {self.consistent_days_per_week}\n"
+        if self.tolerated_workouts:
+            result += f"Treinos já tolerados: {', '.join(self.tolerated_workouts)}\n"
+        if self.adherence_score is not None:
+            result += f"Aderência histórica: {self.adherence_score}%\n"
 
         # Goals
         if self.main_race:
@@ -330,12 +406,29 @@ class UserProfile:
             if self.alternate_long_run_days:
                 result += f"  Semana B - longão preferido: {', '.join(self.alternate_long_run_days)}\n"
 
+        if self.weekly_schedule:
+            result += "Grade semanal:\n"
+            for day, blocks in self.weekly_schedule.items():
+                for block in blocks:
+                    start = block.get('start', '')
+                    end = block.get('end', '')
+                    max_minutes = block.get('max_minutes')
+                    surfaces = ", ".join(block.get('surfaces', []))
+                    block_str = f"   • {day}: {start}-{end}" if start or end else f"   • {day}"
+                    if max_minutes:
+                        block_str += f" | Máx: {max_minutes}min"
+                    if surfaces:
+                        block_str += f" | Acessos: {surfaces}"
+                    result += block_str + "\n"
+
         # Training zones
         if self.recent_race_times:
             result += f"\n🏃 Tempos Recentes:\n"
             for distance, time in self.recent_race_times.items():
                 result += f"   • {distance}: {time}\n"
             result += f"Método de cálculo: {self.zones_calculation_method}\n"
+        if self.vdot_estimate:
+            result += f"Estimativa de VDOT (Jack Daniels): {self.vdot_estimate:.1f}\n"
 
         # Heart rate
         if self.hr_resting or self.hr_max:
@@ -356,11 +449,25 @@ class UserProfile:
                 result += f"   Lesões Atuais: {', '.join(self.current_injuries)}\n"
             if self.previous_injuries:
                 result += f"   Lesões Prévias: {', '.join(self.previous_injuries)}\n"
+            if self.injury_triggers:
+                result += f"   Gatilhos a evitar: {', '.join(self.injury_triggers)}\n"
+            if self.red_zones:
+                result += f"   Zonas Vermelhas (sobrecarga): {', '.join(self.red_zones)}\n"
             result += f"   Nível de Risco: {self.get_injury_risk_level()}\n"
 
         # Equipment
         if self.available_equipment:
             result += f"\n🔧 Equipamentos: {', '.join(self.available_equipment)}\n"
+
+        # Prevention / Strength routines
+        if self.strength_routines:
+            result += f"\n🏋️  Força/Prevenção em uso: {', '.join(self.strength_routines)}\n"
+
+        if self.impact_limitations:
+            result += f"\n⬇️  Limites de Impacto: {', '.join(self.impact_limitations)}\n"
+
+        if self.feedback_required:
+            result += "\n💬 Feedback: Retornar sensações semanalmente para ajustes finos no plano.\n"
 
         # Recommendations
         needs_mod, mods = self.needs_modified_plan()
