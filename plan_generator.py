@@ -1736,9 +1736,6 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
-                             phase: str = "base") -> List[Workout]:
     def _generate_4_day_week(
         cls,
         week_num: int,
@@ -1747,6 +1744,7 @@ class PlanGenerator:
         total_weeks: int,
         training_zones: Optional[TrainingZones] = None,
         goal: str = "10K",
+        phase: str = "base",
         profile_adjustments: Optional[dict] = None,
     ) -> List[Workout]:
         """
@@ -1849,9 +1847,6 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
-                             phase: str = "base") -> List[Workout]:
     def _generate_5_day_week(
         cls,
         week_num: int,
@@ -1860,6 +1855,7 @@ class PlanGenerator:
         total_weeks: int,
         training_zones: Optional[TrainingZones] = None,
         goal: str = "10K",
+        phase: str = "base",
         profile_adjustments: Optional[dict] = None,
     ) -> List[Workout]:
         """
@@ -1969,9 +1965,6 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
-                             phase: str = "base") -> List[Workout]:
     def _generate_6_day_week(
         cls,
         week_num: int,
@@ -1980,6 +1973,7 @@ class PlanGenerator:
         total_weeks: int,
         training_zones: Optional[TrainingZones] = None,
         goal: str = "10K",
+        phase: str = "base",
         profile_adjustments: Optional[dict] = None,
     ) -> List[Workout]:
         """
