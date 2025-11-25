@@ -49,6 +49,11 @@ class UserProfile:
     # Running Experience
     years_running: float = 0.0
     current_weekly_km: float = 0.0
+    average_weekly_km: float = 0.0  # Média de volume nas últimas semanas
+    recent_peak_weekly_km: float = 0.0  # Maior volume recente
+    consistent_days_per_week: int = 0  # Dias/semana já mantidos
+    tolerated_workouts: List[str] = field(default_factory=list)  # Tipos de treinos já tolerados
+    adherence_score: Optional[float] = None  # % de aderência a planos anteriores
     experience_level: str = "beginner"  # "beginner", "intermediate", "advanced"
 
     # Goals
@@ -114,6 +119,16 @@ class UserProfile:
         "Rolo de Massagem/Foam Roller",
         "Faixas de Resistência",
         "Academia"
+    ]
+
+    TOLERATED_WORKOUT_OPTIONS = [
+        "Corridas fáceis/rodagens",
+        "Intervalos curtos",
+        "Intervalos longos",
+        "Tempo run",
+        "Fartlek",
+        "Longões progressivos",
+        "Treino de trilha/terreno variado"
     ]
 
     def calculate_bmi(self) -> float:
@@ -278,6 +293,16 @@ class UserProfile:
         result += f"\n📊 Experiência: {self.years_running} anos correndo\n"
         result += f"Nível: {self.experience_level.capitalize()}\n"
         result += f"Kilometragem semanal atual: {self.current_weekly_km}km\n"
+        if self.average_weekly_km:
+            result += f"Volume médio recente: {self.average_weekly_km}km/sem\n"
+        if self.recent_peak_weekly_km:
+            result += f"Pico recente: {self.recent_peak_weekly_km}km/sem\n"
+        if self.consistent_days_per_week:
+            result += f"Dias mantidos por semana: {self.consistent_days_per_week}\n"
+        if self.tolerated_workouts:
+            result += f"Treinos já tolerados: {', '.join(self.tolerated_workouts)}\n"
+        if self.adherence_score is not None:
+            result += f"Aderência histórica: {self.adherence_score}%\n"
 
         # Goals
         if self.main_race:
