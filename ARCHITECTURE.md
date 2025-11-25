@@ -431,6 +431,15 @@ preferred_time: str                # "morning", "afternoon", "evening"
 preferred_location: List[str]      # ["road", "track", "trail", "treadmill"]
 ```
 
+**Preferências de Treino:**
+```python
+typical_key_workout_rpe: Optional[int]  # RPE típico em treinos-chave (1-10)
+long_session_tolerance: str             # Tolerância a sessões longas
+variety_preference: str                 # Preferência por variedade e rotatividade
+social_training_options: List[str]      # Clubes, parceiros ou grupos disponíveis
+routine_vs_fun_balance: str             # Equilíbrio rotina vs diversão
+```
+
 **Atributos de Saúde:**
 ```python
 current_injuries: List[str]        # Lesões atuais
@@ -557,6 +566,13 @@ tempo_meta_widget: widgets.Text
 dias_semana_widget: widgets.IntSlider
 horas_dia_widget: widgets.FloatSlider
 horario_widget: widgets.Dropdown
+
+# Preferências de treino
+rpe_treino_chave_widget: widgets.IntSlider
+tolerancia_sessao_longa_widget: widgets.Dropdown
+variedade_widget: widgets.Dropdown
+treinos_sociais_widget: widgets.SelectMultiple
+rotina_diversao_widget: widgets.Dropdown
 
 # Zonas de treino
 tempo_5k_widget: widgets.Text

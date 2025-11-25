@@ -62,6 +62,13 @@ class UserProfile:
     preferred_time: str = ""  # "morning", "afternoon", "evening"
     preferred_location: List[str] = field(default_factory=list)  # "track", "road", "trail", "treadmill"
 
+    # Training Preferences
+    typical_key_workout_rpe: Optional[int] = None  # Perceived effort on key sessions (1-10)
+    long_session_tolerance: str = ""  # "baixa", "moderada", "alta" ou descrição livre
+    variety_preference: str = ""  # Preferência por rotatividade/variedade
+    social_training_options: List[str] = field(default_factory=list)  # Clubes, parceiros, grupos
+    routine_vs_fun_balance: str = ""  # "rotina", "diversao", "equilibrado"
+
     # Training Zones (Recent Race Times)
     recent_race_times: Dict[str, str] = field(default_factory=dict)  # {"5K": "22:30", "10K": "47:15"}
     zones_calculation_method: str = "jack_daniels"  # "jack_daniels" or "critical_velocity"
@@ -307,6 +314,26 @@ class UserProfile:
             result += f"Horário preferido: {self.preferred_time}\n"
         if self.preferred_location:
             result += f"Local preferido: {', '.join(self.preferred_location)}\n"
+
+        # Training preferences
+        if any([
+            self.typical_key_workout_rpe,
+            self.long_session_tolerance,
+            self.variety_preference,
+            self.social_training_options,
+            self.routine_vs_fun_balance
+        ]):
+            result += "\n🎛️ Preferências de Treino:\n"
+            if self.typical_key_workout_rpe:
+                result += f"   RPE típico em treinos-chave: {self.typical_key_workout_rpe}/10\n"
+            if self.long_session_tolerance:
+                result += f"   Tolerância a sessões longas: {self.long_session_tolerance}\n"
+            if self.variety_preference:
+                result += f"   Preferência por variedade: {self.variety_preference}\n"
+            if self.social_training_options:
+                result += f"   Treinos sociais possíveis: {', '.join(self.social_training_options)}\n"
+            if self.routine_vs_fun_balance:
+                result += f"   Estilo (rotina vs diversão): {self.routine_vs_fun_balance}\n"
 
         # Training zones
         if self.recent_race_times:
