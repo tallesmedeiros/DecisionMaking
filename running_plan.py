@@ -403,6 +403,7 @@ class RunningPlan:
         self.event: Optional[EventInfo] = None
         self.performance: Optional[PerformanceTargets] = None
         self.training_context: TrainingContext = TrainingContext()
+        self.environment_strategy: EnvironmentStrategy = EnvironmentStrategy()
         self.environmental_preparation: "EnvironmentalPreparation" = EnvironmentalPreparation()
 
     def add_week(self, week: Week):
@@ -477,6 +478,18 @@ class RunningPlan:
             motivation=motivation.strip(), logistics=[item.strip() for item in logistics_list if item.strip()]
         )
 
+    def update_environment_strategy(
+        self,
+        hotter_or_more_humid: bool = False,
+        more_gain_or_descents: bool = False,
+        colder_or_windier: bool = False,
+    ):
+        """Store how the athlete will adapt training to expected race conditions."""
+
+        self.environment_strategy = EnvironmentStrategy(
+            hotter_or_more_humid=hotter_or_more_humid,
+            more_gain_or_descents=more_gain_or_descents,
+            colder_or_windier=colder_or_windier,
     def set_environmental_conditions(
         self,
         heat_humidity: bool = False,
@@ -512,6 +525,7 @@ class RunningPlan:
             "event": self.event.to_dict() if self.event else None,
             "performance": self.performance.to_dict() if self.performance else None,
             "training_context": self.training_context.to_dict() if self.training_context else None,
+            "environment_strategy": self.environment_strategy.to_dict() if self.environment_strategy else None,
             "environmental_preparation": self.environmental_preparation.to_dict()
             if self.environmental_preparation
             else None,
@@ -562,6 +576,8 @@ class RunningPlan:
         if data.get("training_context"):
             plan.training_context = TrainingContext.from_dict(data["training_context"])
 
+        if data.get("environment_strategy"):
+            plan.environment_strategy = EnvironmentStrategy.from_dict(data["environment_strategy"])
         if data.get("environmental_preparation"):
             plan.environmental_preparation = EnvironmentalPreparation.from_dict(
                 data["environmental_preparation"]
@@ -631,6 +647,10 @@ class RunningPlan:
             if self.training_context.logistics:
                 result += f"🚧 Restrições logísticas: {', '.join(self.training_context.logistics)}\n"
 
+        if self.environment_strategy and self.environment_strategy.has_conditions():
+            result += "🌤️ Ajustes para condições da prova:\n"
+            for recommendation in self.environment_strategy.recommendations():
+                result += f"• {recommendation}\n"
         if self.environmental_preparation and self.environmental_preparation.has_any_condition():
             result += "🌍 Ajustes para condições da prova:\n"
             for tip in self.environmental_preparation.get_recommendations():
@@ -812,6 +832,10 @@ class RunningPlan:
             if self.training_context.logistics:
                 result += f"Logistics: {', '.join(self.training_context.logistics)}\n"
 
+        if self.environment_strategy and self.environment_strategy.has_conditions():
+            result += "Environment adjustments:\n"
+            for recommendation in self.environment_strategy.recommendations():
+                result += f"- {recommendation}\n"
         if self.environmental_preparation and self.environmental_preparation.has_any_condition():
             result += "Environment Considerations:\n"
             for tip in self.environmental_preparation.get_recommendations():
@@ -956,6 +980,55 @@ class TrainingContext:
         return cls(
             motivation=data.get("motivation", ""),
             logistics=data.get("logistics", []),
+        )
+
+
+@dataclass
+class EnvironmentStrategy:
+    """Environmental adaptation tactics for the target event."""
+
+    hotter_or_more_humid: bool = False
+    more_gain_or_descents: bool = False
+    colder_or_windier: bool = False
+
+    def has_conditions(self) -> bool:
+        return any([self.hotter_or_more_humid, self.more_gain_or_descents, self.colder_or_windier])
+
+    def recommendations(self) -> List[str]:
+        """Return the relevant recommendations based on selected conditions."""
+
+        tips = []
+        if self.hotter_or_more_humid:
+            tips.append(
+                "Se a prova for mais quente/úmida: adicione blocos de calor e teste hidratação/reposição de sódio em treinos-chave."
+            )
+        if self.more_gain_or_descents:
+            tips.append(
+                "Se a prova tiver mais ganho/declives: aumente volume de colinas 6–10 semanas antes com progressão de carga vertical e prática de descidas controladas."
+            )
+        if self.colder_or_windier:
+            tips.append(
+                "Se a prova for mais fria/ventosa: pratique roupas em camadas, pacing contra vento e treinos em horários mais frios."
+            )
+
+        if tips:
+            tips.append("Registre RPE e frequência cardíaca para manter a carga controlada durante a aclimatação.")
+
+        return tips
+
+    def to_dict(self) -> Dict:
+        return {
+            "hotter_or_more_humid": self.hotter_or_more_humid,
+            "more_gain_or_descents": self.more_gain_or_descents,
+            "colder_or_windier": self.colder_or_windier,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "EnvironmentStrategy":
+        return cls(
+            hotter_or_more_humid=data.get("hotter_or_more_humid", False),
+            more_gain_or_descents=data.get("more_gain_or_descents", False),
+            colder_or_windier=data.get("colder_or_windier", False),
         )
 
 
