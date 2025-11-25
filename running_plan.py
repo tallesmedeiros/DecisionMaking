@@ -377,6 +377,7 @@ class RunningPlan:
         self.event: Optional[EventInfo] = None
         self.performance: Optional[PerformanceTargets] = None
         self.training_context: TrainingContext = TrainingContext()
+        self.environmental_preparation: "EnvironmentalPreparation" = EnvironmentalPreparation()
 
     def add_week(self, week: Week):
         """Add a week to the training schedule."""
@@ -450,6 +451,22 @@ class RunningPlan:
             motivation=motivation.strip(), logistics=[item.strip() for item in logistics_list if item.strip()]
         )
 
+    def set_environmental_conditions(
+        self,
+        heat_humidity: bool = False,
+        altitude: bool = False,
+        hilly_course: bool = False,
+        technical_course: bool = False,
+    ):
+        """Store course-specific conditions to surface targeted adaptations."""
+
+        self.environmental_preparation = EnvironmentalPreparation(
+            heat_humidity=heat_humidity,
+            altitude=altitude,
+            hilly_course=hilly_course,
+            technical_course=technical_course,
+        )
+
     def get_race_date(self) -> Optional[datetime]:
         """Calculate the race date based on start date and plan duration."""
         if self.start_date:
@@ -469,6 +486,9 @@ class RunningPlan:
             "event": self.event.to_dict() if self.event else None,
             "performance": self.performance.to_dict() if self.performance else None,
             "training_context": self.training_context.to_dict() if self.training_context else None,
+            "environmental_preparation": self.environmental_preparation.to_dict()
+            if self.environmental_preparation
+            else None,
             "schedule": [
                 {
                     "week_number": week.week_number,
@@ -512,6 +532,11 @@ class RunningPlan:
 
         if data.get("training_context"):
             plan.training_context = TrainingContext.from_dict(data["training_context"])
+
+        if data.get("environmental_preparation"):
+            plan.environmental_preparation = EnvironmentalPreparation.from_dict(
+                data["environmental_preparation"]
+            )
 
         # Reconstruct schedule
         for week_data in data["schedule"]:
@@ -572,6 +597,11 @@ class RunningPlan:
                 result += f"💡 Motivação: {self.training_context.motivation}\n"
             if self.training_context.logistics:
                 result += f"🚧 Restrições logísticas: {', '.join(self.training_context.logistics)}\n"
+
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "🌍 Ajustes para condições da prova:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"  • {tip}\n"
 
         if self.start_date:
             result += f"🚀 Início: {self.start_date.strftime('%d/%m/%Y (%A)')}\n"
@@ -662,6 +692,11 @@ class RunningPlan:
             if self.training_context.logistics:
                 result += f"Logistics: {', '.join(self.training_context.logistics)}\n"
 
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "Environment Considerations:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"- {tip}\n"
+
         if self.start_date:
             result += f"Start Date: {self.start_date.strftime('%Y-%m-%d')}\n"
             race_date = self.get_race_date()
@@ -674,6 +709,8 @@ class RunningPlan:
             result += str(week)
 
         return result
+
+
 @dataclass
 class EventInfo:
     """Information about the target event."""
@@ -716,6 +753,68 @@ class PerformanceTargets:
             goal_time=data.get("goal_time"),
             goal_pace_per_km=data.get("goal_pace_per_km"),
             gap_vs_pb=data.get("gap_vs_pb"),
+        )
+
+
+@dataclass
+class EnvironmentalPreparation:
+    """Conditions-specific adaptations for race preparation."""
+
+    heat_humidity: bool = False
+    altitude: bool = False
+    hilly_course: bool = False
+    technical_course: bool = False
+
+    def has_any_condition(self) -> bool:
+        return any([self.heat_humidity, self.altitude, self.hilly_course, self.technical_course])
+
+    def get_recommendations(self) -> List[str]:
+        """Return actionable tips based on selected conditions."""
+
+        tips: List[str] = []
+
+        if self.heat_humidity:
+            tips.append(
+                "Calor/Umidade: programe 2–3 semanas de aclimatação progressiva (5–7 sessões de 30–60min) "
+                "no horário mais quente ou indoor com camadas extras; monitore hidratação por pesagem pré/pós "
+                "e planeje reposição de eletrólitos."
+            )
+
+        if self.altitude:
+            tips.append(
+                "Altitude: inclua simulações moderadas (bivaque/serra) ou treinos de tolerância à hipóxia suave, "
+                "mantendo a intensidade controlada nos primeiros dias."
+            )
+
+        if self.hilly_course:
+            tips.append(
+                "Colinas: faça 1–2 sessões semanais de força em subida (repetições curtas/longas) e rodagens em "
+                "terreno ondulado; pratique descidas para preparar o quadríceps."
+            )
+
+        if self.technical_course:
+            tips.append(
+                "Terreno técnico: realize sessões em trilha similar, trabalhe propriocepção/tornozelo e escolha "
+                "tênis com aderência adequada."
+            )
+
+        return tips
+
+    def to_dict(self) -> Dict:
+        return {
+            "heat_humidity": self.heat_humidity,
+            "altitude": self.altitude,
+            "hilly_course": self.hilly_course,
+            "technical_course": self.technical_course,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "EnvironmentalPreparation":
+        return cls(
+            heat_humidity=data.get("heat_humidity", False),
+            altitude=data.get("altitude", False),
+            hilly_course=data.get("hilly_course", False),
+            technical_course=data.get("technical_course", False),
         )
 
 
