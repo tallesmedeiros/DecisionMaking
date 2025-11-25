@@ -168,6 +168,18 @@ class TrainingZones:
 
         return vdot
 
+    def calculate_zones_from_vdot(self, vdot: float):
+        """Directly set VDOT and compute training zones from it.
+
+        This is useful when the athlete already knows their current VDOT and
+        wants the pace table without providing race performances.
+        """
+        if vdot <= 0:
+            raise ValueError("VDOT must be positive")
+
+        self.vdot = vdot
+        self._calculate_zones_for_vdot(vdot)
+
     def _velocity_at_vdot(self, vdot: float, percent_vo2max: float) -> float:
         """
         Calculate velocity (m/min) at a given percentage of VO2max.
@@ -193,13 +205,16 @@ class TrainingZones:
         best_vdot = 0
 
         for race_time in self.race_times.values():
-            vdot = self._calculate_vdot_from_race(race_time.distance_km, race_time.time_seconds)
-            if vdot > best_vdot:
-                best_vdot = vdot
+                vdot = self._calculate_vdot_from_race(race_time.distance_km, race_time.time_seconds)
+                if vdot > best_vdot:
+                    best_vdot = vdot
 
         self.vdot = best_vdot
 
-        # Calculate paces for each training zone based on VDOT
+        self._calculate_zones_for_vdot(self.vdot)
+
+    def _calculate_zones_for_vdot(self, vdot: float):
+        """Populate ``self.zones`` using a provided VDOT value."""
         # Percentages of VO2max for each zone
         zone_percentages = {
             'easy': (0.59, 0.74),  # 59-74% of VO2max
@@ -211,8 +226,8 @@ class TrainingZones:
 
         for zone_name, (min_pct, max_pct) in zone_percentages.items():
             # Calculate velocities in m/min
-            max_velocity = self._velocity_at_vdot(self.vdot, max_pct)  # Faster pace (higher %)
-            min_velocity = self._velocity_at_vdot(self.vdot, min_pct)  # Slower pace (lower %)
+            max_velocity = self._velocity_at_vdot(vdot, max_pct)  # Faster pace (higher %)
+            min_velocity = self._velocity_at_vdot(vdot, min_pct)  # Slower pace (lower %)
 
             # Convert to seconds per km
             min_pace = 60000 / max_velocity  # Faster actual pace (less seconds)
