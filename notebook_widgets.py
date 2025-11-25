@@ -240,6 +240,61 @@ class PlanCreatorWidgets:
             layout=widgets.Layout(width='400px')
         )
 
+        # Widgets para preferências de treino
+        self.rpe_treino_chave_widget = widgets.IntSlider(
+            value=7,
+            min=1,
+            max=10,
+            step=1,
+            description='RPE treinos-chave:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.tolerancia_sessao_longa_widget = widgets.Dropdown(
+            options=[
+                ('Baixa: prefiro longos mais curtos', 'baixa'),
+                ('Moderada: aceito longos se bem espaçados', 'moderada'),
+                ('Alta: longos frequentes não são problema', 'alta')
+            ],
+            value='moderada',
+            description='Sessões longas:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.variedade_widget = widgets.Dropdown(
+            options=[
+                ('Muita variedade e rotatividade', 'alta'),
+                ('Equilíbrio entre variedade e repetição', 'moderada'),
+                ('Prefiro rotina previsível', 'baixa')
+            ],
+            value='moderada',
+            description='Variedade:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.treinos_sociais_widget = widgets.SelectMultiple(
+            options=['Clube de corrida', 'Parceiro fixo', 'Grupo eventual', 'Prefiro treinar sozinho'],
+            value=('Prefiro treinar sozinho',),
+            description='Treinos sociais:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.rotina_diversao_widget = widgets.Dropdown(
+            options=[
+                ('Rotina e resultados acima de tudo', 'rotina'),
+                ('Diversão e novidades em primeiro lugar', 'diversao'),
+                ('Equilíbrio entre diversão e rotina', 'equilibrado')
+            ],
+            value='equilibrado',
+            description='Estilo de motivação:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
         # Widgets para zonas de treino
         self.tempo_5k_widget = widgets.Text(
             value='',
@@ -361,6 +416,16 @@ class PlanCreatorWidgets:
         display(self.horas_dia_widget)
         display(self.horario_widget)
 
+    def show_training_preferences(self):
+        """Mostra widgets para preferências de intensidade e aderência."""
+        display(HTML("<h3>🎛️ Preferências de Treino</h3>"))
+        display(self.rpe_treino_chave_widget)
+        display(self.tolerancia_sessao_longa_widget)
+        display(self.variedade_widget)
+        display(HTML("<p><i>Selecione opções sociais para aumentar a aderência.</i></p>"))
+        display(self.treinos_sociais_widget)
+        display(self.rotina_diversao_widget)
+
     def show_training_zones(self):
         """Mostra widgets para zonas de treino."""
         display(HTML("<h3>📊 Tempos Recentes de Prova</h3>"))
@@ -421,6 +486,13 @@ class PlanCreatorWidgets:
         self.profile.days_per_week = self.dias_semana_widget.value
         self.profile.hours_per_day = self.horas_dia_widget.value
         self.profile.preferred_time = self.horario_widget.value
+
+        # Preferências de treino
+        self.profile.typical_key_workout_rpe = self.rpe_treino_chave_widget.value
+        self.profile.long_session_tolerance = self.tolerancia_sessao_longa_widget.value
+        self.profile.variety_preference = self.variedade_widget.value
+        self.profile.social_training_options = list(self.treinos_sociais_widget.value)
+        self.profile.routine_vs_fun_balance = self.rotina_diversao_widget.value
 
         # Tempos de prova
         if self.tempo_5k_widget.value:
@@ -564,6 +636,9 @@ class PlanCreatorWidgets:
         display(HTML("<hr>"))
 
         self.show_availability()
+        display(HTML("<hr>"))
+
+        self.show_training_preferences()
         display(HTML("<hr>"))
 
         self.show_training_zones()
