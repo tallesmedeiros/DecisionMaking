@@ -56,6 +56,8 @@ class PlanGenerator:
                 training_zones = cls._build_zones_from_profile(user_profile)
 
             # Override days_per_week with profile's recommended value if safer
+            if user_profile.consistent_days_per_week:
+                days_per_week = min(days_per_week, user_profile.consistent_days_per_week)
             recommended_days = user_profile.get_recommended_days_per_week()
             if recommended_days < days_per_week:
                 days_per_week = recommended_days
@@ -137,6 +139,9 @@ class PlanGenerator:
             'max_workout_minutes': None,  # Maximum workout duration
             'injury_modifications': [],  # List of injury-based modifications
             'rest_day_recommendations': [],  # Recommended rest days
+            'quality_load_factor': 1.0,  # Adjusts how much volume vai para treinos intensos
+            'max_weekly_increase': 0.10,  # Regra de 10% por semana
+            'peak_weekly_km': None,  # Pico recente informado pelo atleta
         }
 
         if not user_profile:
@@ -147,11 +152,22 @@ class PlanGenerator:
             # Convert hours to minutes
             adjustments['max_workout_minutes'] = int(user_profile.hours_per_day * 60)
 
-        # Adjust volume based on current weekly km vs target
-        # If current volume is much lower than target, reduce initial volume
-        if user_profile.current_weekly_km > 0:
-            # Start at current volume or slightly higher
-            adjustments['starting_volume_km'] = user_profile.current_weekly_km * 1.1
+        # Ajustar volume inicial com base em histórico (média/pico)
+        baseline_volume = 0.0
+        if user_profile.average_weekly_km:
+            baseline_volume = user_profile.average_weekly_km
+        if user_profile.current_weekly_km:
+            baseline_volume = max(baseline_volume, user_profile.current_weekly_km)
+        if user_profile.recent_peak_weekly_km:
+            adjustments['peak_weekly_km'] = user_profile.recent_peak_weekly_km
+            baseline_volume = min(baseline_volume or user_profile.recent_peak_weekly_km, user_profile.recent_peak_weekly_km)
+
+        if baseline_volume > 0:
+            # Começar com margem de segurança (10% acima da média, mas não acima do pico)
+            starting_volume = baseline_volume * 1.1
+            if adjustments['peak_weekly_km']:
+                starting_volume = min(starting_volume, adjustments['peak_weekly_km'])
+            adjustments['starting_volume_km'] = starting_volume
 
         # Adjust for injury risk
         injury_risk = user_profile.get_injury_risk_level()
@@ -194,6 +210,23 @@ class PlanGenerator:
         if user_profile.years_running < 1:
             adjustments['volume_factor'] *= 0.8
             adjustments['progression_factor'] *= 0.85
+
+        # Ajuste pela aderência histórica
+        if user_profile.adherence_score is not None:
+            if user_profile.adherence_score < 60:
+                adjustments['volume_factor'] *= 0.9
+                adjustments['progression_factor'] *= 0.85
+            elif user_profile.adherence_score < 80:
+                adjustments['progression_factor'] *= 0.95
+
+        # Ajuste pela variedade de treinos já tolerada
+        if user_profile.tolerated_workouts:
+            tolerated = {w.lower() for w in user_profile.tolerated_workouts}
+            intense_keywords = {"interval", "intervalo", "tempo", "fartlek"}
+            if not tolerated.intersection(intense_keywords):
+                adjustments['quality_load_factor'] = 0.8
+            elif len(tolerated.intersection(intense_keywords)) == 1:
+                adjustments['quality_load_factor'] = 0.9
 
         return adjustments
 
@@ -279,22 +312,37 @@ class PlanGenerator:
 
             # Limit current week to 10% increase from previous week
             # Exception: Allow decrease (for recovery weeks and taper)
-            max_allowed_distance = prev_weekly_distance * 1.10
+            max_increase = profile_adjustments.get('max_weekly_increase', 0.10)
+            max_allowed_distance = prev_weekly_distance * (1 + max_increase)
             if weekly_distance > max_allowed_distance:
                 weekly_distance = max_allowed_distance
+
+        # Respeitar pico recente informado
+        if profile_adjustments.get('peak_weekly_km'):
+            peak_cap = profile_adjustments['peak_weekly_km'] * (1 + profile_adjustments.get('max_weekly_increase', 0.10))
+            if weekly_distance > peak_cap:
+                weekly_distance = peak_cap
 
         # Round weekly distance to nearest 5km
         weekly_distance = round_to_nearest_5km(weekly_distance)
 
         # Distribute workouts across the week
         if days_per_week == 3:
-            workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_3_day_week(
+                week_number, weekly_distance, level, total_weeks, training_zones, goal, profile_adjustments
+            )
         elif days_per_week == 4:
-            workouts = cls._generate_4_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_4_day_week(
+                week_number, weekly_distance, level, total_weeks, training_zones, goal, profile_adjustments
+            )
         elif days_per_week == 5:
-            workouts = cls._generate_5_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_5_day_week(
+                week_number, weekly_distance, level, total_weeks, training_zones, goal, profile_adjustments
+            )
         elif days_per_week == 6:
-            workouts = cls._generate_6_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_6_day_week(
+                week_number, weekly_distance, level, total_weeks, training_zones, goal, profile_adjustments
+            )
         else:
             raise ValueError(f"Unsupported days_per_week: {days_per_week}")
 
@@ -1023,8 +1071,16 @@ class PlanGenerator:
         return workout
 
     @classmethod
-    def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+    def _generate_3_day_week(
+        cls,
+        week_num: int,
+        weekly_distance: float,
+        level: str,
+        total_weeks: int,
+        training_zones: Optional[TrainingZones] = None,
+        goal: str = "10K",
+        profile_adjustments: Optional[dict] = None,
+    ) -> List[Workout]:
         """
         Generate workouts for a 3-day training week.
 
@@ -1034,6 +1090,8 @@ class PlanGenerator:
         - Day 3: Long run
         """
         workouts = []
+        profile_adjustments = profile_adjustments or {}
+        quality_factor = profile_adjustments.get('quality_load_factor', 1.0)
 
         # Check if intermediate or advanced
         is_advanced_level = level in ["intermediate", "advanced"]
@@ -1044,9 +1102,9 @@ class PlanGenerator:
             # NEW LOGIC: Specific structure for intermediate/advanced with 3 days
 
             # Distribution
-            quality_1_distance = weekly_distance * 0.25
-            quality_2_distance = weekly_distance * 0.30
-            long_distance = weekly_distance * 0.45
+            quality_1_distance = weekly_distance * 0.25 * quality_factor
+            quality_2_distance = weekly_distance * 0.30 * quality_factor
+            long_distance = max(weekly_distance - (quality_1_distance + quality_2_distance), weekly_distance * 0.35)
 
             # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
             if week_num <= 2:
@@ -1089,7 +1147,7 @@ class PlanGenerator:
             workouts.append(cls._create_easy_run("Tuesday", easy_distance, training_zones))
 
             # Tempo, race-specific, or easy
-            quality_distance = weekly_distance * 0.25
+            quality_distance = weekly_distance * 0.25 * quality_factor
             if week_num <= 3:
                 workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
             elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
@@ -1098,7 +1156,7 @@ class PlanGenerator:
                 workouts.append(cls._create_tempo_run("Thursday", quality_distance, training_zones))
 
             # Long run - Marathon pace for Marathon goal
-            long_distance = weekly_distance * 0.45
+            long_distance = max(weekly_distance - (easy_distance + quality_distance), weekly_distance * 0.35)
             if race_specific_phase and training_zones and goal == "Marathon":
                 workouts.append(cls._create_marathon_pace_run("Saturday", long_distance, training_zones))
             else:
@@ -1111,14 +1169,24 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+    def _generate_4_day_week(
+        cls,
+        week_num: int,
+        weekly_distance: float,
+        level: str,
+        total_weeks: int,
+        training_zones: Optional[TrainingZones] = None,
+        goal: str = "10K",
+        profile_adjustments: Optional[dict] = None,
+    ) -> List[Workout]:
         """
         Generate workouts for a 4-day training week.
 
         NEW: For intermediate/advanced, keep 3 quality workouts + 1 easy run
         """
         workouts = []
+        profile_adjustments = profile_adjustments or {}
+        quality_factor = profile_adjustments.get('quality_load_factor', 1.0)
 
         # Check if intermediate or advanced
         is_advanced_level = level in ["intermediate", "advanced"]
@@ -1129,10 +1197,13 @@ class PlanGenerator:
             # NEW LOGIC: Same 3 quality workouts as 3-day + 1 easy run
 
             # Distribution: smaller percentages due to 4th day
-            quality_1_distance = weekly_distance * 0.22
-            quality_2_distance = weekly_distance * 0.26
+            quality_1_distance = weekly_distance * 0.22 * quality_factor
+            quality_2_distance = weekly_distance * 0.26 * quality_factor
             easy_distance = weekly_distance * 0.15  # 4th training day
-            long_distance = weekly_distance * 0.37
+            long_distance = max(
+                weekly_distance - (quality_1_distance + quality_2_distance + easy_distance),
+                weekly_distance * 0.25,
+            )
 
             # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
             if week_num <= 2:
@@ -1168,7 +1239,7 @@ class PlanGenerator:
             easy_distance_1 = weekly_distance * 0.22
             workouts.append(cls._create_easy_run("Tuesday", easy_distance_1, training_zones))
 
-            quality_distance = weekly_distance * 0.23
+            quality_distance = weekly_distance * 0.23 * quality_factor
             if week_num <= 2:
                 workouts.append(cls._create_easy_run("Thursday", quality_distance, training_zones))
             elif race_specific_phase and training_zones and goal in ["5K", "10K"]:
@@ -1181,7 +1252,10 @@ class PlanGenerator:
             easy_distance_2 = weekly_distance * 0.20
             workouts.append(cls._create_easy_run("Friday", easy_distance_2, training_zones))
 
-            long_distance = weekly_distance * 0.35
+            long_distance = max(
+                weekly_distance - (easy_distance_1 + easy_distance_2 + quality_distance),
+                weekly_distance * 0.25,
+            )
             use_progressive = (week_num % 3 == 0) and (week_num > 3) and not race_specific_phase and training_zones
             if race_specific_phase and training_zones and goal == "Marathon":
                 workouts.append(cls._create_marathon_pace_run("Sunday", long_distance, training_zones))
@@ -1197,14 +1271,24 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+    def _generate_5_day_week(
+        cls,
+        week_num: int,
+        weekly_distance: float,
+        level: str,
+        total_weeks: int,
+        training_zones: Optional[TrainingZones] = None,
+        goal: str = "10K",
+        profile_adjustments: Optional[dict] = None,
+    ) -> List[Workout]:
         """
         Generate workouts for a 5-day training week.
 
         NEW: For intermediate/advanced, keep 3 quality workouts + 2 easy runs
         """
         workouts = []
+        profile_adjustments = profile_adjustments or {}
+        quality_factor = profile_adjustments.get('quality_load_factor', 1.0)
 
         # Check if intermediate or advanced
         is_advanced_level = level in ["intermediate", "advanced"]
@@ -1216,10 +1300,13 @@ class PlanGenerator:
 
             # Distribution
             easy_1_distance = weekly_distance * 0.17
-            quality_1_distance = weekly_distance * 0.19
-            quality_2_distance = weekly_distance * 0.23
+            quality_1_distance = weekly_distance * 0.19 * quality_factor
+            quality_2_distance = weekly_distance * 0.23 * quality_factor
             easy_2_distance = weekly_distance * 0.12  # 5th day
-            long_distance = weekly_distance * 0.29
+            long_distance = max(
+                weekly_distance - (easy_1_distance + easy_2_distance + quality_1_distance + quality_2_distance),
+                weekly_distance * 0.22,
+            )
 
             # DAY 1 (Monday): Easy run - EXTRA DAY with shorter duration
             workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
@@ -1259,9 +1346,13 @@ class PlanGenerator:
                 "easy1": weekly_distance * 0.20,
                 "easy2": weekly_distance * 0.18,
                 "easy3": weekly_distance * 0.15,
-                "quality": weekly_distance * 0.20,
-                "long": weekly_distance * 0.27
+                "quality": weekly_distance * 0.20 * quality_factor,
             }
+
+            distances["long"] = max(
+                weekly_distance - sum(distances.values()),
+                weekly_distance * 0.22,
+            )
 
             workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
             workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))
@@ -1289,14 +1380,24 @@ class PlanGenerator:
         return sorted(workouts, key=lambda w: cls.DAYS_OF_WEEK.index(w.day))
 
     @classmethod
-    def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+    def _generate_6_day_week(
+        cls,
+        week_num: int,
+        weekly_distance: float,
+        level: str,
+        total_weeks: int,
+        training_zones: Optional[TrainingZones] = None,
+        goal: str = "10K",
+        profile_adjustments: Optional[dict] = None,
+    ) -> List[Workout]:
         """
         Generate workouts for a 6-day training week.
 
         NEW: For intermediate/advanced, keep 3 quality workouts + 3 easy runs
         """
         workouts = []
+        profile_adjustments = profile_adjustments or {}
+        quality_factor = profile_adjustments.get('quality_load_factor', 1.0)
 
         # Check if intermediate or advanced
         is_advanced_level = level in ["intermediate", "advanced"]
@@ -1308,11 +1409,14 @@ class PlanGenerator:
 
             # Distribution
             easy_1_distance = weekly_distance * 0.15
-            quality_1_distance = weekly_distance * 0.17
+            quality_1_distance = weekly_distance * 0.17 * quality_factor
             easy_2_distance = weekly_distance * 0.13
-            quality_2_distance = weekly_distance * 0.21
+            quality_2_distance = weekly_distance * 0.21 * quality_factor
             easy_3_distance = weekly_distance * 0.11  # 6th day
-            long_distance = weekly_distance * 0.23
+            long_distance = max(
+                weekly_distance - (easy_1_distance + easy_2_distance + easy_3_distance + quality_1_distance + quality_2_distance),
+                weekly_distance * 0.18,
+            )
 
             # DAY 1 (Monday): Easy run - EXTRA DAY
             workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
@@ -1356,9 +1460,13 @@ class PlanGenerator:
                 "easy2": weekly_distance * 0.16,
                 "easy3": weekly_distance * 0.14,
                 "easy4": weekly_distance * 0.12,
-                "quality": weekly_distance * 0.18,
-                "long": weekly_distance * 0.22
+                "quality": weekly_distance * 0.18 * quality_factor,
             }
+
+            distances["long"] = max(
+                weekly_distance - sum(distances.values()),
+                weekly_distance * 0.18,
+            )
 
             workouts.append(cls._create_easy_run("Monday", distances["easy1"], training_zones))
             workouts.append(cls._create_easy_run("Tuesday", distances["easy2"], training_zones))

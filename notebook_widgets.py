@@ -115,10 +115,58 @@ class PlanCreatorWidgets:
             layout=widgets.Layout(width='400px')
         )
 
+        self.volume_medio_widget = widgets.FloatSlider(
+            value=30.0,
+            min=0.0,
+            max=200.0,
+            step=5.0,
+            description='Volume médio (km):',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.pico_recente_widget = widgets.FloatSlider(
+            value=40.0,
+            min=0.0,
+            max=250.0,
+            step=5.0,
+            description='Pico recente (km):',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.dias_mantidos_widget = widgets.IntSlider(
+            value=4,
+            min=1,
+            max=7,
+            step=1,
+            description='Dias mantidos/sem:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
         self.nivel_widget = widgets.Dropdown(
             options=[('Iniciante', 'beginner'), ('Intermediário', 'intermediate'), ('Avançado', 'advanced')],
             value='intermediate',
             description='Nível:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px')
+        )
+
+        self.treinos_tolerados_widget = widgets.SelectMultiple(
+            options=UserProfile.TOLERATED_WORKOUT_OPTIONS,
+            value=['Corridas fáceis/rodagens', 'Longões progressivos'],
+            description='Treinos tolerados:',
+            style={'description_width': '150px'},
+            layout=widgets.Layout(width='400px', height='120px')
+        )
+
+        self.aderencia_widget = widgets.IntSlider(
+            value=80,
+            min=0,
+            max=100,
+            step=5,
+            description='Aderência (%):',
             style={'description_width': '150px'},
             layout=widgets.Layout(width='400px')
         )
@@ -290,7 +338,12 @@ class PlanCreatorWidgets:
         display(HTML("<h3>🏃 Experiência em Corrida</h3>"))
         display(self.anos_correndo_widget)
         display(self.km_semanal_widget)
+        display(self.volume_medio_widget)
+        display(self.pico_recente_widget)
+        display(self.dias_mantidos_widget)
         display(self.nivel_widget)
+        display(self.treinos_tolerados_widget)
+        display(self.aderencia_widget)
 
     def show_goal(self):
         """Mostra widgets para objetivo de prova."""
@@ -347,6 +400,11 @@ class PlanCreatorWidgets:
         # Experiência
         self.profile.years_running = self.anos_correndo_widget.value
         self.profile.current_weekly_km = self.km_semanal_widget.value
+        self.profile.average_weekly_km = self.volume_medio_widget.value
+        self.profile.recent_peak_weekly_km = self.pico_recente_widget.value
+        self.profile.consistent_days_per_week = self.dias_mantidos_widget.value
+        self.profile.tolerated_workouts = list(self.treinos_tolerados_widget.value)
+        self.profile.adherence_score = float(self.aderencia_widget.value)
         self.profile.experience_level = self.nivel_widget.value
 
         # Objetivo
