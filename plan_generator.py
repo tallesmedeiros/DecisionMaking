@@ -181,6 +181,7 @@ class PlanGenerator:
             'red_zones': [],  # Areas to avoid overload
             'strength_routines': [],  # Strength/prehab exercises to maintain
             'feedback_prompt': None,  # Reminder to collect athlete feedback
+            'peak_weekly_km': None,  # Track recent peak volume safely
         }
 
         if not user_profile:
@@ -424,7 +425,7 @@ class PlanGenerator:
 
         # Apply schedule preferences based on user agenda
         if user_profile:
-            workouts, schedule_notes = cls._apply_schedule_preferences(workouts, user_profile, week_number)
+            workouts, schedule_notes = cls._apply_agenda_preferences(workouts, user_profile, week_number)
             if schedule_notes:
                 notes = notes + "\n\n" if notes else ""
                 notes += "\n".join(schedule_notes)
@@ -551,7 +552,7 @@ class PlanGenerator:
         return None
 
     @classmethod
-    def _apply_schedule_preferences(cls, workouts: List[Workout], user_profile: 'UserProfile', week_number: int) -> Tuple[List[Workout], List[str]]:
+    def _apply_agenda_preferences(cls, workouts: List[Workout], user_profile: 'UserProfile', week_number: int) -> Tuple[List[Workout], List[str]]:
         """
         Adjust weekly schedule to respect high-stress blocks and long-run preferences.
 
