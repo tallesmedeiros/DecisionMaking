@@ -209,6 +209,45 @@ class PlanGenerator:
         return defaults.get(goal, 12)
 
     @classmethod
+    def _determine_block_lengths(cls, total_weeks: int) -> dict:
+        """Allocate 4–6 week blocks for Base, Specific and a shorter Taper."""
+        taper_weeks = max(2, min(3, int(round(total_weeks * 0.15))))
+        remaining = max(total_weeks - taper_weeks, 0)
+
+        base_weeks = min(6, max(4, remaining // 2)) if remaining else 0
+        specific_weeks = remaining - base_weeks
+
+        # Guarantee specific block also fits the 4–6 window
+        if specific_weeks < 4 and base_weeks > 4:
+            transfer = min(base_weeks - 4, 4 - specific_weeks)
+            base_weeks -= transfer
+            specific_weeks += transfer
+
+        specific_weeks = min(6, max(4, specific_weeks)) if remaining else 0
+        # Re-adjust base weeks if specific was clamped to 6
+        base_weeks = max(4, min(6, total_weeks - taper_weeks - specific_weeks)) if remaining else 0
+
+        # If plan is very short, divide remaining weeks evenly between base and specific
+        if base_weeks + specific_weeks + taper_weeks < total_weeks:
+            leftover = total_weeks - (base_weeks + specific_weeks + taper_weeks)
+            base_weeks += leftover // 2
+            specific_weeks += leftover - (leftover // 2)
+
+        return {"base": base_weeks, "specific": specific_weeks, "taper": taper_weeks}
+
+    @classmethod
+    def _get_phase_for_week(cls, week_number: int, block_lengths: dict) -> Tuple[str, int]:
+        """Return current phase (base/specific/taper) and week within that block."""
+        base_end = block_lengths["base"]
+        specific_end = base_end + block_lengths["specific"]
+
+        if week_number <= base_end:
+            return "base", week_number
+        if week_number <= specific_end:
+            return "specific", week_number - base_end
+        return "taper", week_number - specific_end
+
+    @classmethod
     def _generate_week(
         cls,
         week_number: int,
@@ -229,6 +268,9 @@ class PlanGenerator:
         # Calculate weekly distance based on progression
         target_distance = cls.GOAL_TARGETS.get(goal, {}).get(level, 30)
 
+        block_lengths = cls._determine_block_lengths(total_weeks)
+        phase, week_in_phase = cls._get_phase_for_week(week_number, block_lengths)
+
         # Apply volume adjustment from profile
         volume_factor = profile_adjustments.get('volume_factor', 1.0)
         target_distance *= volume_factor
@@ -237,15 +279,22 @@ class PlanGenerator:
         if 'starting_volume_km' in profile_adjustments and week_number == 1:
             weekly_distance = profile_adjustments['starting_volume_km']
         else:
-            # Progressive build: gradually increase to peak, then taper
             progression_factor = profile_adjustments.get('progression_factor', 1.0)
+            base_peak = target_distance * 0.9
 
-            if week_number <= total_weeks * 0.7:  # Build phase
-                weekly_distance = target_distance * (week_number / (total_weeks * 0.7)) * progression_factor
-            elif week_number <= total_weeks - 2:  # Maintenance phase
-                weekly_distance = target_distance
-            else:  # Taper phase
-                taper_factor = 0.7 if week_number == total_weeks - 1 else 0.5
+            if phase == "base":
+                progress = week_in_phase / max(block_lengths['base'], 1)
+                weekly_distance = base_peak * progress * progression_factor
+            elif phase == "specific":
+                progress = week_in_phase / max(block_lengths['specific'], 1)
+                weekly_distance = (base_peak + (target_distance - base_peak) * progress) * progression_factor
+            else:  # taper
+                taper_weeks = max(block_lengths['taper'], 1)
+                taper_progress = week_in_phase / taper_weeks
+                # Glide from 70% down towards 50% across taper block
+                taper_start = 0.7
+                taper_end = 0.5
+                taper_factor = taper_start - (taper_start - taper_end) * taper_progress
                 weekly_distance = target_distance * taper_factor
 
         # IMPROVEMENT 1: Apply recovery week reduction (25% reduction every 4 weeks)
@@ -262,12 +311,17 @@ class PlanGenerator:
             if 'starting_volume_km' in profile_adjustments and prev_week_num == 1:
                 prev_weekly_distance = profile_adjustments['starting_volume_km']
             else:
-                if prev_week_num <= total_weeks * 0.7:
-                    prev_weekly_distance = target_distance * (prev_week_num / (total_weeks * 0.7)) * progression_factor
-                elif prev_week_num <= total_weeks - 2:
-                    prev_weekly_distance = target_distance
+                prev_phase, prev_week_in_phase = cls._get_phase_for_week(prev_week_num, block_lengths)
+                if prev_phase == "base":
+                    prev_progress = prev_week_in_phase / max(block_lengths['base'], 1)
+                    prev_weekly_distance = target_distance * 0.9 * prev_progress * progression_factor
+                elif prev_phase == "specific":
+                    prev_progress = prev_week_in_phase / max(block_lengths['specific'], 1)
+                    prev_weekly_distance = (target_distance * 0.9 + (target_distance * 0.1) * prev_progress) * progression_factor
                 else:
-                    prev_taper_factor = 0.7 if prev_week_num == total_weeks - 1 else 0.5
+                    taper_weeks = max(block_lengths['taper'], 1)
+                    taper_progress = prev_week_in_phase / taper_weeks
+                    prev_taper_factor = 0.7 - (0.7 - 0.5) * taper_progress
                     prev_weekly_distance = target_distance * prev_taper_factor
 
                 # Apply recovery week reduction if previous week was recovery
@@ -288,20 +342,21 @@ class PlanGenerator:
 
         # Distribute workouts across the week
         if days_per_week == 3:
-            workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_3_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal, phase)
         elif days_per_week == 4:
-            workouts = cls._generate_4_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_4_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal, phase)
         elif days_per_week == 5:
-            workouts = cls._generate_5_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_5_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal, phase)
         elif days_per_week == 6:
-            workouts = cls._generate_6_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal)
+            workouts = cls._generate_6_day_week(week_number, weekly_distance, level, total_weeks, training_zones, goal, phase)
         else:
             raise ValueError(f"Unsupported days_per_week: {days_per_week}")
 
         # Add notes for special weeks
-        notes = ""
+        phase_note = f"Fase: {phase.title()} (semana {week_in_phase}/{block_lengths[phase]})"
+        notes = phase_note
         if week_number == 1:
-            notes = "Welcome to your training plan! Start easy and focus on consistency."
+            notes = phase_note + "\n" + "Welcome to your training plan! Start easy and focus on consistency."
             # Add profile-specific notes for first week
             if profile_adjustments.get('injury_modifications'):
                 notes += "\n\n⚠️  ATENÇÃO - Modificações devido a lesões:"
@@ -362,6 +417,13 @@ class PlanGenerator:
         max_distance = (max_minutes * 60) / pace  # pace is in seconds per km
 
         return round(max_distance, 1)
+
+    @staticmethod
+    def _clamp_distance_by_time(pace_seconds_per_km: float, desired_distance_km: float, min_minutes: int, max_minutes: int) -> float:
+        """Clamp a distance so its duration stays within a target window."""
+        min_distance = (min_minutes * 60) / pace_seconds_per_km
+        max_distance = (max_minutes * 60) / pace_seconds_per_km
+        return min(max_distance, max(min_distance, desired_distance_km))
 
     @classmethod
     def _create_easy_run(cls, day: str, distance_km: float, training_zones: Optional[TrainingZones] = None) -> Workout:
@@ -428,8 +490,12 @@ class PlanGenerator:
 
             # Tempo portion: 60% of distance
             tempo_km = round(rounded_distance * 0.60, 1)
+            tempo_pace_seconds = training_zones.get_zone_pace('threshold', 'middle')
             tempo_pace = training_zones.get_zone_pace_str('threshold', 'middle')
-            tempo_time = training_zones.get_time_for_distance(tempo_km, training_zones.get_zone_pace('threshold', 'middle')) // 60
+            tempo_km = cls._clamp_distance_by_time(tempo_pace_seconds, tempo_km, 20, 40)
+            max_tempo_km = max(0.0, rounded_distance - warmup_km - 0.5)
+            tempo_km = min(tempo_km, max_tempo_km)
+            tempo_time = training_zones.get_time_for_distance(tempo_km, tempo_pace_seconds) // 60
 
             # Cooldown: remaining distance
             cooldown_km = round(rounded_distance - warmup_km - tempo_km, 1)
@@ -463,9 +529,8 @@ class PlanGenerator:
                 description="Ritmo fácil para recuperação"
             ))
 
-            total_time = training_zones.get_time_for_distance(rounded_distance, training_zones.get_zone_pace('threshold', 'middle'))
-            total_time_rounded = round_to_nearest_30min(total_time / 60) * 60
-            workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
+            total_time = warmup_time + tempo_time + cooldown_time
+            workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
 
         return workout
 
@@ -520,14 +585,18 @@ class PlanGenerator:
             work_km = round(interval_total_km * 0.60, 1)  # 60% hard, 40% recovery
             recovery_km = round(interval_total_km * 0.40, 1)
 
+            interval_pace_seconds = training_zones.get_zone_pace('interval', 'middle')
             interval_pace = training_zones.get_zone_pace_str('interval', 'middle')
             recovery_pace = training_zones.get_zone_pace_str('easy', 'middle')
 
             # Calculate number of repeats based on base interval distance
+            base_interval_distance = cls._clamp_distance_by_time(interval_pace_seconds, base_interval_distance, 3, 5)
             num_repeats = max(4, min(10, int(work_km / base_interval_distance)))
+            num_repeats = max(1, num_repeats)
             work_per_repeat = round(work_km / num_repeats, 2)
+            work_per_repeat = cls._clamp_distance_by_time(interval_pace_seconds, work_per_repeat, 3, 5)
 
-            work_time_per = training_zones.get_time_for_distance(work_per_repeat, training_zones.get_zone_pace('interval', 'middle')) // 60
+            work_time_per = training_zones.get_time_for_distance(work_per_repeat, interval_pace_seconds) // 60
 
             # IMPROVEMENT 3: Recovery time proportional to level
             # beginner: 1:1 (recovery = work time)
@@ -679,8 +748,10 @@ class PlanGenerator:
             warmup_time = training_zones.get_time_for_distance(warmup_km, training_zones.get_zone_pace('easy', 'middle')) // 60
 
             # Work intervals at race pace
+            race_pace_seconds = training_zones.get_zone_pace(pace_zone, 'middle')
+            repeat_distance = cls._clamp_distance_by_time(race_pace_seconds, repeat_distance, 3, 5)
             race_pace = training_zones.get_zone_pace_str(pace_zone, 'middle')
-            work_time_per = training_zones.get_time_for_distance(repeat_distance, training_zones.get_zone_pace(pace_zone, 'middle')) // 60
+            work_time_per = training_zones.get_time_for_distance(repeat_distance, race_pace_seconds) // 60
 
             # Recovery based on level
             recovery_ratios = {'beginner': 1.0, 'intermediate': 0.75, 'advanced': 0.5}
@@ -749,7 +820,7 @@ class PlanGenerator:
             type="Short Intervals",
             distance_km=rounded_distance,
             description="Intervalos curtos para velocidade e técnica",
-            training_zone="interval"
+            training_zone="repetition"
         )
 
         if training_zones:
@@ -760,12 +831,16 @@ class PlanGenerator:
 
             # Short intervals: 400m repeats
             base_interval = 0.4  # 400m
+            if level == "beginner":
+                base_interval = 0.3
+            base_interval = max(0.2, min(0.4, base_interval))
             interval_total_km = rounded_distance * 0.50
             work_km = round(interval_total_km * 0.60, 1)
             num_repeats = max(8, min(12, int(work_km / base_interval)))
 
-            interval_pace = training_zones.get_zone_pace_str('interval', 'middle')
-            work_time_per = training_zones.get_time_for_distance(base_interval, training_zones.get_zone_pace('interval', 'middle')) // 60
+            repetition_pace_seconds = training_zones.get_zone_pace('repetition', 'middle')
+            interval_pace = training_zones.get_zone_pace_str('repetition', 'middle')
+            work_time_per = training_zones.get_time_for_distance(base_interval, repetition_pace_seconds) // 60
 
             # Recovery based on level
             recovery_ratios = {'beginner': 1.0, 'intermediate': 0.75, 'advanced': 0.5}
@@ -849,8 +924,11 @@ class PlanGenerator:
             num_repeats = max(4, min(8, int(work_km / base_interval)))
 
             # Use threshold pace (slightly slower than interval pace)
+            threshold_pace_seconds = training_zones.get_zone_pace('threshold', 'middle')
+            base_interval = cls._clamp_distance_by_time(threshold_pace_seconds, base_interval, 3, 5)
+            num_repeats = max(2, min(8, int(work_km / base_interval)))
             threshold_pace = training_zones.get_zone_pace_str('threshold', 'middle')
-            work_time_per = training_zones.get_time_for_distance(base_interval, training_zones.get_zone_pace('threshold', 'middle')) // 60
+            work_time_per = training_zones.get_time_for_distance(base_interval, threshold_pace_seconds) // 60
 
             # Recovery based on level
             recovery_ratios = {'beginner': 1.0, 'intermediate': 0.75, 'advanced': 0.5}
@@ -1024,7 +1102,8 @@ class PlanGenerator:
 
     @classmethod
     def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
+                             phase: str = "base") -> List[Workout]:
         """
         Generate workouts for a 3-day training week.
 
@@ -1047,6 +1126,14 @@ class PlanGenerator:
             quality_1_distance = weekly_distance * 0.25
             quality_2_distance = weekly_distance * 0.30
             long_distance = weekly_distance * 0.45
+
+            if phase == "base":
+                quality_1_distance *= 0.9
+                quality_2_distance *= 0.95
+            elif phase == "taper":
+                quality_1_distance *= 0.7
+                quality_2_distance *= 0.7
+                long_distance *= 0.9
 
             # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
             if week_num <= 2:
@@ -1112,7 +1199,8 @@ class PlanGenerator:
 
     @classmethod
     def _generate_4_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
+                             phase: str = "base") -> List[Workout]:
         """
         Generate workouts for a 4-day training week.
 
@@ -1133,6 +1221,14 @@ class PlanGenerator:
             quality_2_distance = weekly_distance * 0.26
             easy_distance = weekly_distance * 0.15  # 4th training day
             long_distance = weekly_distance * 0.37
+
+            if phase == "base":
+                quality_1_distance *= 0.9
+                quality_2_distance *= 0.9
+            elif phase == "taper":
+                quality_1_distance *= 0.65
+                quality_2_distance *= 0.65
+                long_distance *= 0.9
 
             # DAY 1 (Tuesday): Short intervals OR Long intervals (if endurance race)
             if week_num <= 2:
@@ -1198,7 +1294,8 @@ class PlanGenerator:
 
     @classmethod
     def _generate_5_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
+                             phase: str = "base") -> List[Workout]:
         """
         Generate workouts for a 5-day training week.
 
@@ -1220,6 +1317,14 @@ class PlanGenerator:
             quality_2_distance = weekly_distance * 0.23
             easy_2_distance = weekly_distance * 0.12  # 5th day
             long_distance = weekly_distance * 0.29
+
+            if phase == "base":
+                quality_1_distance *= 0.9
+                quality_2_distance *= 0.9
+            elif phase == "taper":
+                quality_1_distance *= 0.65
+                quality_2_distance *= 0.65
+                long_distance *= 0.9
 
             # DAY 1 (Monday): Easy run - EXTRA DAY with shorter duration
             workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
@@ -1290,7 +1395,8 @@ class PlanGenerator:
 
     @classmethod
     def _generate_6_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K") -> List[Workout]:
+                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
+                             phase: str = "base") -> List[Workout]:
         """
         Generate workouts for a 6-day training week.
 
@@ -1313,6 +1419,14 @@ class PlanGenerator:
             quality_2_distance = weekly_distance * 0.21
             easy_3_distance = weekly_distance * 0.11  # 6th day
             long_distance = weekly_distance * 0.23
+
+            if phase == "base":
+                quality_1_distance *= 0.9
+                quality_2_distance *= 0.9
+            elif phase == "taper":
+                quality_1_distance *= 0.65
+                quality_2_distance *= 0.65
+                long_distance *= 0.9
 
             # DAY 1 (Monday): Easy run - EXTRA DAY
             workouts.append(cls._create_easy_run("Monday", easy_1_distance, training_zones))
