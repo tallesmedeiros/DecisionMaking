@@ -25,6 +25,13 @@ def round_to_nearest_30min(minutes: float) -> int:
     return max(30, round(minutes / 30) * 30)
 
 
+def round_to_nearest_5min(minutes: float) -> int:
+    """Round time to nearest 5-minute increment."""
+    if minutes == 0:
+        return 0
+    return int(round(minutes / 5) * 5)
+
+
 @dataclass
 class WorkoutSegment:
     """Represents a segment of a workout (warmup, intervals, cooldown, etc)."""
@@ -122,6 +129,14 @@ class Workout:
     target_pace: Optional[str] = None  # Target pace for main work (MM:SS/km)
     segments: List[WorkoutSegment] = field(default_factory=list)
     total_time_estimated: Optional[str] = None  # HH:MM:SS or MM:SS
+    total_minutes: Optional[int] = None
+
+    # Session logistics
+    warmup_minutes: int = 0
+    cooldown_minutes: int = 0
+    commute_minutes: int = 0
+    max_session_minutes: Optional[int] = None
+    surface_options: List[str] = field(default_factory=list)
 
     # Zone information
     training_zone: Optional[str] = None  # e.g., "easy", "threshold", "interval"
@@ -385,6 +400,10 @@ class RunningPlan:
         self.created_date = datetime.now()
         self.weekly_checkins: List[WeeklyCheckIn] = []
         self.adjustments_log: List[str] = []
+        self.event: Optional[EventInfo] = None
+        self.performance: Optional[PerformanceTargets] = None
+        self.training_context: TrainingContext = TrainingContext()
+        self.environmental_preparation: "EnvironmentalPreparation" = EnvironmentalPreparation()
 
     def add_week(self, week: Week):
         """Add a week to the training schedule."""
@@ -400,6 +419,79 @@ class RunningPlan:
     def set_start_date(self, date: datetime):
         """Set the start date for the plan."""
         self.start_date = date
+
+    def set_event_info(self, distance: str, event_date: datetime):
+        """Store target event details."""
+
+        self.event = EventInfo(distance=distance, date=event_date)
+
+    def set_performance_targets(
+        self,
+        personal_best: Optional[str],
+        goal_time: Optional[str],
+        distance_label: Optional[str] = None,
+    ):
+        """Calculate and store performance targets and pacing gaps."""
+
+        if not goal_time or not distance_label:
+            self.performance = PerformanceTargets(
+                personal_best=personal_best, goal_time=goal_time
+            )
+            return
+
+        distance_km = _distance_label_to_km(distance_label)
+        if distance_km <= 0:
+            self.performance = PerformanceTargets(
+                personal_best=personal_best,
+                goal_time=goal_time,
+                goal_pace_per_km=None,
+                gap_vs_pb=None,
+            )
+            return
+
+        goal_seconds = _parse_time_string(goal_time)
+        goal_pace = goal_seconds / distance_km
+        goal_pace_str = _format_seconds_to_time(goal_pace)
+
+        pb_gap = None
+        if personal_best:
+            try:
+                pb_seconds = _parse_time_string(personal_best)
+                pb_pace = pb_seconds / distance_km
+                pb_gap = _calculate_gap(goal_pace, pb_pace)
+            except ValueError:
+                pb_gap = None
+
+        self.performance = PerformanceTargets(
+            personal_best=personal_best,
+            goal_time=goal_time,
+            goal_pace_per_km=goal_pace_str,
+            gap_vs_pb=pb_gap,
+        )
+
+    def update_training_context(self, motivation: str = "", logistics: Optional[List[str]] = None):
+        """Persist motivation and logistical constraints."""
+
+        logistics_list = logistics if logistics is not None else []
+        self.training_context = TrainingContext(
+            motivation=motivation.strip(), logistics=[item.strip() for item in logistics_list if item.strip()]
+        )
+
+    def set_environmental_conditions(
+        self,
+        heat_humidity: bool = False,
+        altitude: bool = False,
+        hilly_course: bool = False,
+        technical_course: bool = False,
+    ):
+        """Store course-specific conditions to surface targeted adaptations."""
+
+        self.environmental_preparation = EnvironmentalPreparation(
+            heat_humidity=heat_humidity,
+            altitude=altitude,
+            hilly_course=hilly_course,
+            technical_course=technical_course,
+        )
 
     def get_race_date(self) -> Optional[datetime]:
         """Calculate the race date based on start date and plan duration."""
@@ -417,6 +509,12 @@ class RunningPlan:
             "days_per_week": self.days_per_week,
             "start_date": self.start_date.isoformat() if self.start_date else None,
             "created_date": self.created_date.isoformat(),
+            "event": self.event.to_dict() if self.event else None,
+            "performance": self.performance.to_dict() if self.performance else None,
+            "training_context": self.training_context.to_dict() if self.training_context else None,
+            "environmental_preparation": self.environmental_preparation.to_dict()
+            if self.environmental_preparation
+            else None,
             "schedule": [
                 {
                     "week_number": week.week_number,
@@ -454,6 +552,20 @@ class RunningPlan:
 
         plan.created_date = datetime.fromisoformat(data["created_date"])
         plan.adjustments_log = data.get("adjustments_log", [])
+
+        if data.get("event"):
+            plan.event = EventInfo.from_dict(data["event"])
+
+        if data.get("performance"):
+            plan.performance = PerformanceTargets.from_dict(data["performance"])
+
+        if data.get("training_context"):
+            plan.training_context = TrainingContext.from_dict(data["training_context"])
+
+        if data.get("environmental_preparation"):
+            plan.environmental_preparation = EnvironmentalPreparation.from_dict(
+                data["environmental_preparation"]
+            )
 
         # Reconstruct schedule
         for week_data in data["schedule"]:
@@ -495,6 +607,34 @@ class RunningPlan:
         result += f"📊 Nível: {self.level.capitalize()}\n"
         result += f"📅 Duração: {self.weeks} semanas\n"
         result += f"🗓️  Dias de treino: {self.days_per_week} dias/semana\n"
+
+        if self.event:
+            result += f"🏁 Prova alvo: {self.event.distance} em {self.event.date.strftime('%d/%m/%Y')}\n"
+
+        if self.performance:
+            perf_parts = []
+            if self.performance.personal_best:
+                perf_parts.append(f"PB: {self.performance.personal_best}")
+            if self.performance.goal_time:
+                perf_parts.append(f"Meta: {self.performance.goal_time}")
+            if self.performance.goal_pace_per_km:
+                perf_parts.append(f"Pace-meta: {self.performance.goal_pace_per_km}/km")
+            if self.performance.gap_vs_pb:
+                perf_parts.append(f"Gap vs PB: {self.performance.gap_vs_pb}")
+
+            if perf_parts:
+                result += "⏱️  " + " | ".join(perf_parts) + "\n"
+
+        if self.training_context and (self.training_context.motivation or self.training_context.logistics):
+            if self.training_context.motivation:
+                result += f"💡 Motivação: {self.training_context.motivation}\n"
+            if self.training_context.logistics:
+                result += f"🚧 Restrições logísticas: {', '.join(self.training_context.logistics)}\n"
+
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "🌍 Ajustes para condições da prova:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"  • {tip}\n"
 
         if self.start_date:
             result += f"🚀 Início: {self.start_date.strftime('%d/%m/%Y (%A)')}\n"
@@ -653,6 +793,30 @@ class RunningPlan:
         result += f"Duration: {self.weeks} weeks\n"
         result += f"Training Days: {self.days_per_week} days/week\n"
 
+        if self.event:
+            result += f"Event: {self.event.distance} on {self.event.date.strftime('%Y-%m-%d')}\n"
+
+        if self.performance:
+            if self.performance.personal_best:
+                result += f"PB: {self.performance.personal_best}\n"
+            if self.performance.goal_time:
+                result += f"Goal Time: {self.performance.goal_time}\n"
+            if self.performance.goal_pace_per_km:
+                result += f"Goal Pace: {self.performance.goal_pace_per_km}/km\n"
+            if self.performance.gap_vs_pb:
+                result += f"Gap vs PB: {self.performance.gap_vs_pb}\n"
+
+        if self.training_context and (self.training_context.motivation or self.training_context.logistics):
+            if self.training_context.motivation:
+                result += f"Motivation: {self.training_context.motivation}\n"
+            if self.training_context.logistics:
+                result += f"Logistics: {', '.join(self.training_context.logistics)}\n"
+
+        if self.environmental_preparation and self.environmental_preparation.has_any_condition():
+            result += "Environment Considerations:\n"
+            for tip in self.environmental_preparation.get_recommendations():
+                result += f"- {tip}\n"
+
         if self.start_date:
             result += f"Start Date: {self.start_date.strftime('%Y-%m-%d')}\n"
             race_date = self.get_race_date()
@@ -665,3 +829,181 @@ class RunningPlan:
             result += str(week)
 
         return result
+
+
+@dataclass
+class EventInfo:
+    """Information about the target event."""
+
+    distance: str
+    date: datetime
+
+    def to_dict(self) -> Dict:
+        return {
+            "distance": self.distance,
+            "date": self.date.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "EventInfo":
+        return cls(distance=data["distance"], date=datetime.fromisoformat(data["date"]))
+
+
+@dataclass
+class PerformanceTargets:
+    """Performance objectives for the target event."""
+
+    personal_best: Optional[str] = None
+    goal_time: Optional[str] = None
+    goal_pace_per_km: Optional[str] = None
+    gap_vs_pb: Optional[str] = None
+
+    def to_dict(self) -> Dict:
+        return {
+            "personal_best": self.personal_best,
+            "goal_time": self.goal_time,
+            "goal_pace_per_km": self.goal_pace_per_km,
+            "gap_vs_pb": self.gap_vs_pb,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "PerformanceTargets":
+        return cls(
+            personal_best=data.get("personal_best"),
+            goal_time=data.get("goal_time"),
+            goal_pace_per_km=data.get("goal_pace_per_km"),
+            gap_vs_pb=data.get("gap_vs_pb"),
+        )
+
+
+@dataclass
+class EnvironmentalPreparation:
+    """Conditions-specific adaptations for race preparation."""
+
+    heat_humidity: bool = False
+    altitude: bool = False
+    hilly_course: bool = False
+    technical_course: bool = False
+
+    def has_any_condition(self) -> bool:
+        return any([self.heat_humidity, self.altitude, self.hilly_course, self.technical_course])
+
+    def get_recommendations(self) -> List[str]:
+        """Return actionable tips based on selected conditions."""
+
+        tips: List[str] = []
+
+        if self.heat_humidity:
+            tips.append(
+                "Calor/Umidade: programe 2–3 semanas de aclimatação progressiva (5–7 sessões de 30–60min) "
+                "no horário mais quente ou indoor com camadas extras; monitore hidratação por pesagem pré/pós "
+                "e planeje reposição de eletrólitos."
+            )
+
+        if self.altitude:
+            tips.append(
+                "Altitude: inclua simulações moderadas (bivaque/serra) ou treinos de tolerância à hipóxia suave, "
+                "mantendo a intensidade controlada nos primeiros dias."
+            )
+
+        if self.hilly_course:
+            tips.append(
+                "Colinas: faça 1–2 sessões semanais de força em subida (repetições curtas/longas) e rodagens em "
+                "terreno ondulado; pratique descidas para preparar o quadríceps."
+            )
+
+        if self.technical_course:
+            tips.append(
+                "Terreno técnico: realize sessões em trilha similar, trabalhe propriocepção/tornozelo e escolha "
+                "tênis com aderência adequada."
+            )
+
+        return tips
+
+    def to_dict(self) -> Dict:
+        return {
+            "heat_humidity": self.heat_humidity,
+            "altitude": self.altitude,
+            "hilly_course": self.hilly_course,
+            "technical_course": self.technical_course,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "EnvironmentalPreparation":
+        return cls(
+            heat_humidity=data.get("heat_humidity", False),
+            altitude=data.get("altitude", False),
+            hilly_course=data.get("hilly_course", False),
+            technical_course=data.get("technical_course", False),
+        )
+
+
+@dataclass
+class TrainingContext:
+    """Motivation and logistical constraints for tailoring the plan."""
+
+    motivation: str = ""
+    logistics: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict:
+        return {
+            "motivation": self.motivation,
+            "logistics": self.logistics,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "TrainingContext":
+        return cls(
+            motivation=data.get("motivation", ""),
+            logistics=data.get("logistics", []),
+        )
+
+
+def _parse_time_string(time_str: str) -> int:
+    """Convert time strings (HH:MM:SS or MM:SS) to total seconds."""
+
+    parts = time_str.strip().split(":")
+    if len(parts) == 2:
+        minutes, seconds = parts
+        hours = 0
+    elif len(parts) == 3:
+        hours, minutes, seconds = parts
+    else:
+        raise ValueError("Invalid time format. Use MM:SS or HH:MM:SS")
+
+    return int(hours) * 3600 + int(minutes) * 60 + int(seconds)
+
+
+def _format_seconds_to_time(total_seconds: float) -> str:
+    """Format seconds into MM:SS string for pace outputs."""
+
+    total_seconds = int(round(total_seconds))
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def _distance_label_to_km(distance_label: str) -> float:
+    """Convert common race labels to kilometers."""
+
+    mapping = {
+        "5K": 5.0,
+        "10K": 10.0,
+        "15K": 15.0,
+        "Half Marathon": 21.0975,
+        "21K": 21.0975,
+        "Marathon": 42.195,
+        "42K": 42.195,
+    }
+    return mapping.get(distance_label, 0)
+
+
+def _calculate_gap(target_pace: float, pb_pace: float) -> str:
+    """Return human-friendly gap string between target pace and PB pace."""
+
+    if pb_pace <= 0:
+        return "N/A"
+
+    gap_seconds = target_pace - pb_pace
+    sign = "+" if gap_seconds > 0 else "-"
+    return f"{sign}{_format_seconds_to_time(abs(gap_seconds))}/km"
+
