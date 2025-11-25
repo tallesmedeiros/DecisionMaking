@@ -176,6 +176,54 @@ def test_time_constraints():
     print(f"  Distância Semana 1: {week1.total_distance_km}km")
 
 
+def test_red_zones_and_prevention_notes():
+    """Ensure safety constraints, red zones and strength work are surfaced in the plan."""
+    print("\n\n" + "="*70)
+    print("TESTE 4: Zonas Vermelhas e Prevenção")
+    print("="*70)
+
+    race_date = date.today() + timedelta(days=63)
+
+    profile = UserProfile(
+        name="Patrícia Souza",
+        age=33,
+        weight_kg=62.0,
+        height_cm=168.0,
+        gender="F",
+        years_running=1.2,
+        current_weekly_km=28.0,
+        experience_level="intermediate",
+        main_race=RaceGoal(
+            distance="10K",
+            date=race_date,
+            is_main_goal=True
+        ),
+        days_per_week=4,
+        hours_per_day=1.0,
+        current_injuries=["Síndrome da Banda Iliotibial"],
+        injury_triggers=["Descidas longas", "Volume alto sem pausa"],
+        red_zones=["Downhill íngreme", "Fartlek pesado sem força"],
+        strength_routines=["Fortalecimento de core 2x/sem", "Mobilidade de quadril"],
+        impact_limitations=["Evitar colinas prolongadas", "Preferir superfícies macias"],
+    )
+
+    plan = PlanGenerator.generate_plan(
+        name="Plano Seguro",
+        goal="10K",
+        level="intermediate",
+        user_profile=profile
+    )
+
+    week1 = plan.get_week(1)
+    print("\n✓ Notas Semana 1 (resumo de segurança):")
+    print(week1.notes)
+
+    assert "Zonas Vermelhas" in week1.notes
+    assert "Limites de Impacto" in week1.notes
+    assert "Manter força" in week1.notes
+    assert "Feedback semanal" in week1.notes
+
+
 def test_high_bmi_adjustments():
     """Test plan adjustments for users with high BMI."""
     print("\n\n" + "="*70)

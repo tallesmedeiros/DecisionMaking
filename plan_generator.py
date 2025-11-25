@@ -147,9 +147,10 @@ class PlanGenerator:
             'max_workout_minutes': None,  # Maximum workout duration
             'injury_modifications': [],  # List of injury-based modifications
             'rest_day_recommendations': [],  # Recommended rest days
-            'quality_load_factor': 1.0,  # Adjusts how much volume vai para treinos intensos
-            'max_weekly_increase': 0.10,  # Regra de 10% por semana
-            'peak_weekly_km': None,  # Pico recente informado pelo atleta
+            'impact_limitations': [],  # Low-impact constraints to respect
+            'red_zones': [],  # Areas to avoid overload
+            'strength_routines': [],  # Strength/prehab exercises to maintain
+            'feedback_prompt': None,  # Reminder to collect athlete feedback
         }
 
         if not user_profile:
@@ -209,6 +210,24 @@ class PlanGenerator:
             adjustments['injury_modifications'].append("Evitar trabalho de velocidade intenso")
             adjustments['injury_modifications'].append("Fortalecer panturrilha gradualmente")
 
+        # Impact limits and red zones
+        if user_profile.impact_limitations:
+            adjustments['impact_limitations'].extend(user_profile.impact_limitations)
+            adjustments['injury_modifications'].append(
+                f"Limitar impacto: {', '.join(user_profile.impact_limitations)}"
+            )
+
+        if user_profile.red_zones:
+            adjustments['red_zones'].extend(user_profile.red_zones)
+            adjustments['injury_modifications'].append(
+                f"Zonas vermelhas definidas: {', '.join(user_profile.red_zones)}"
+            )
+
+        if user_profile.injury_triggers:
+            adjustments['injury_modifications'].append(
+                f"Monitorar gatilhos: {', '.join(user_profile.injury_triggers)}"
+            )
+
         # Recommend rest days for high-risk profiles
         if user_profile.get_injury_risk_level() == "Alto":
             adjustments['rest_day_recommendations'].append("Considere adicionar um dia de descanso extra")
@@ -219,22 +238,16 @@ class PlanGenerator:
             adjustments['volume_factor'] *= 0.8
             adjustments['progression_factor'] *= 0.85
 
-        # Ajuste pela aderência histórica
-        if user_profile.adherence_score is not None:
-            if user_profile.adherence_score < 60:
-                adjustments['volume_factor'] *= 0.9
-                adjustments['progression_factor'] *= 0.85
-            elif user_profile.adherence_score < 80:
-                adjustments['progression_factor'] *= 0.95
+        # Preserve existing strength/prehab routines
+        if user_profile.strength_routines:
+            adjustments['strength_routines'].extend(user_profile.strength_routines)
 
-        # Ajuste pela variedade de treinos já tolerada
-        if user_profile.tolerated_workouts:
-            tolerated = {w.lower() for w in user_profile.tolerated_workouts}
-            intense_keywords = {"interval", "intervalo", "tempo", "fartlek"}
-            if not tolerated.intersection(intense_keywords):
-                adjustments['quality_load_factor'] = 0.8
-            elif len(tolerated.intersection(intense_keywords)) == 1:
-                adjustments['quality_load_factor'] = 0.9
+        # Default to continuous feedback loop for safer progression
+        if user_profile.feedback_required:
+            adjustments['feedback_prompt'] = (
+                "Plano em modo conservador (regra dos 10%, semanas de recuperação). Compartilhe feedback semanal "
+                "sobre dor/fadiga para ajustes baseados em evidências."
+            )
 
         return adjustments
 
@@ -378,6 +391,32 @@ class PlanGenerator:
             notes = "Taper week - reduce volume to arrive fresh for race day."
         elif week_number % 4 == 0 and week_number < total_weeks - 2:
             notes = "Recovery week - volume reduced by 25% to absorb training and prevent overtraining."
+
+        # Add persistent safety notes
+        additional_sections = []
+        if profile_adjustments.get('impact_limitations'):
+            section = "⬇️  Limites de Impacto:" + "".join(
+                [f"\n  • {limit}" for limit in profile_adjustments['impact_limitations']]
+            )
+            additional_sections.append(section)
+
+        if profile_adjustments.get('red_zones'):
+            section = "🚫 Zonas Vermelhas (evitar overload):" + "".join(
+                [f"\n  • {zone}" for zone in profile_adjustments['red_zones']]
+            )
+            additional_sections.append(section)
+
+        if profile_adjustments.get('strength_routines'):
+            section = "🏋️  Manter força/prevenção em uso:" + "".join(
+                [f"\n  • {exercise}" for exercise in profile_adjustments['strength_routines']]
+            )
+            additional_sections.append(section)
+
+        if profile_adjustments.get('feedback_prompt'):
+            additional_sections.append(f"💬 Feedback semanal: {profile_adjustments['feedback_prompt']}")
+
+        if additional_sections:
+            notes = notes + "\n\n" + "\n\n".join(additional_sections) if notes else "\n\n".join(additional_sections)
 
         # Add test race if in profile
         if user_profile and user_profile.test_races:
