@@ -198,6 +198,20 @@ def create_new_plan():
     )
     logistics = [item.strip() for item in logistics_raw.split(',') if item.strip()]
 
+    print("\n--- Race Day Environment ---")
+    hotter_or_more_humid = get_yes_no(
+        "Is the race expected to be hotter or more humid than your usual training?",
+        default=False,
+    )
+    more_gain_or_descents = get_yes_no(
+        "Will the race have more elevation gain/descents than you're used to?",
+        default=False,
+    )
+    colder_or_windier = get_yes_no(
+        "Is the race likely colder or windier than your baseline?",
+        default=False,
+    )
+
     # Confirm
     print("\n--- Plan Summary ---")
     print(f"Name: {plan_name}")
@@ -238,6 +252,11 @@ def create_new_plan():
         plan.set_performance_targets(current_pb, target_time, distance_label=event_distance)
 
     plan.update_training_context(motivation=motivation, logistics=logistics)
+    plan.update_environment_strategy(
+        hotter_or_more_humid=hotter_or_more_humid,
+        more_gain_or_descents=more_gain_or_descents,
+        colder_or_windier=colder_or_windier,
+    )
 
     # Ask for start date
     if get_yes_no("\nWould you like to set a start date?", default=True):
