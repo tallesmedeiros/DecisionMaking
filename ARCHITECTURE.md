@@ -11,7 +11,13 @@
 
 ## 🏗️ Visão Geral da Arquitetura
 
-O sistema é organizado em módulos independentes que seguem o princípio de responsabilidade única:
+O sistema é organizado em módulos independentes que seguem o princípio de responsabilidade única. Ele funciona em três camadas principais:
+
+1. **Entrada e Orquestração**: widgets do notebook (`notebook_widgets.py`) e CLI (`cli.py`) coletam os dados do atleta e disparam a geração.
+2. **Lógica de Negócio**: `plan_generator.py` aplica regras de periodização, distribuição de intensidades e restrições de tempo/lesão para montar semanas e treinos.
+3. **Dados e Persistência**: o plano é mantido como objetos Python (`running_plan.py`) e pode ser salvo/carregado em **JSON** usando `RunningPlan.save_to_file` e `RunningPlan.load_from_file`, preservando semanas, treinos e zonas de treino.
+
+Os arquivos JSON produzidos ficam na pasta onde o script é executado, o que facilita versionamento ou upload manual para o Colab. Todos os cálculos usam apenas a biblioteca padrão do Python, permitindo rodar em ambientes sem dependências externas.
 
 ```
 DecisionMaking/
@@ -39,6 +45,13 @@ DecisionMaking/
 └── 🖥️ Interface CLI (cli.py)
     └── Funções de interação com usuário
 ```
+
+### 🔄 Fluxo de Dados e Lógica
+
+1. **Coleta de parâmetros**: usuário preenche widgets do notebook ou responde prompts na CLI. Os dados são convertidos em um `UserProfile` (arquivo `user_profile.py`).
+2. **Cálculo de zonas**: `training_zones.py` deriva zonas a partir de tempos de prova ou velocidade crítica e devolve paces/ritmos que serão usados pelos treinos.
+3. **Geração do plano**: `PlanGenerator.generate_plan` combina objetivo, nível, dias/semana e disponibilidade de tempo. Ele calcula volume-alvo semanal, distribui por dia e cria treinos (`Workout`) e segmentos (`WorkoutSegment`), aplicando regras de progressão, recuperação e taper.
+4. **Persistência e exportação**: o plano (`RunningPlan`) pode ser salvo em JSON, impresso em formato visual, enviado ao Intervals.icu (`intervals_integration.py`) ou exportado em PDF (`pdf_export.py`).
 
 ---
 
@@ -431,6 +444,15 @@ preferred_time: str                # "morning", "afternoon", "evening"
 preferred_location: List[str]      # ["road", "track", "trail", "treadmill"]
 ```
 
+**Preferências de Treino:**
+```python
+typical_key_workout_rpe: Optional[int]  # RPE típico em treinos-chave (1-10)
+long_session_tolerance: str             # Tolerância a sessões longas
+variety_preference: str                 # Preferência por variedade e rotatividade
+social_training_options: List[str]      # Clubes, parceiros ou grupos disponíveis
+routine_vs_fun_balance: str             # Equilíbrio rotina vs diversão
+```
+
 **Atributos de Saúde:**
 ```python
 current_injuries: List[str]        # Lesões atuais
@@ -557,6 +579,13 @@ tempo_meta_widget: widgets.Text
 dias_semana_widget: widgets.IntSlider
 horas_dia_widget: widgets.FloatSlider
 horario_widget: widgets.Dropdown
+
+# Preferências de treino
+rpe_treino_chave_widget: widgets.IntSlider
+tolerancia_sessao_longa_widget: widgets.Dropdown
+variedade_widget: widgets.Dropdown
+treinos_sociais_widget: widgets.SelectMultiple
+rotina_diversao_widget: widgets.Dropdown
 
 # Zonas de treino
 tempo_5k_widget: widgets.Text

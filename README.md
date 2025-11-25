@@ -2,6 +2,10 @@
 
 Um software completo em Python para criar planos de treino de corrida personalizados. Seja você treinar para 5K, 10K, Meia Maratona ou Maratona, esta ferramenta gera cronogramas estruturados adaptados ao seu nível de experiência e objetivos.
 
+## ℹ️ O que é o Criador de Planos de Corrida
+
+O Criador de Planos de Corrida é um **gerador automático de periodizações**. Ele coleta dados do atleta (tempo disponível, experiência, tempos de prova e histórico de lesões), calcula zonas de treino com métodos consagrados e produz um plano semanal completo com volume, distribuição de intensidades e treinos detalhados. Tudo é feito em Python, sem dependências externas, podendo ser usado via notebook, linha de comando ou integração com Intervals.icu.
+
 ## ✨ Funcionalidades
 
 - **🎯 Múltiplas Distâncias**: Suporte para treinos de 5K, 10K, Meia Maratona e Maratona
@@ -107,6 +111,16 @@ python --version
 ```
 
 **🎉 Sem dependências adicionais necessárias - usa apenas a biblioteca padrão do Python!**
+
+## 🌡️ Registro de condições e hidratação
+
+Para manter o plano alinhado às condições reais da prova e do treino:
+
+- Use uma planilha ou app de treino para logar: temperatura (°C), umidade relativa (%), vento, ganho/percurso, RPE, peso pré/pós e ingestão de fluidos.
+- Fotografe ou baixe os mapas de altimetria da prova e dos treinos-chave.
+- Atualize semanalmente uma ficha de “Condições-alvo” vs. “Condições de treino”.
+
+📄 Consulte o checklist e o modelo de ficha em [TRAINING_LOG_GUIDE.md](TRAINING_LOG_GUIDE.md).
 
 ## 📚 Modos de Uso
 

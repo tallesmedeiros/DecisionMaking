@@ -4,7 +4,7 @@ Calculates training paces based on recent race times using:
 1. Jack Daniels VDOT tables
 2. Critical Velocity formula
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 import math
 
@@ -83,6 +83,7 @@ class TrainingZones:
         self.zones: Dict[str, Tuple[float, float]] = {}  # zone_name -> (min_pace, max_pace) in sec/km
         self.vdot: Optional[float] = None
         self.race_times: Dict[str, RaceTime] = {}
+        self.update_log = []
 
     def add_race_time(self, name: str, race_time: RaceTime):
         """Add a race time to the calculator."""
@@ -99,6 +100,48 @@ class TrainingZones:
             self._calculate_critical_velocity_zones()
         else:
             raise ValueError(f"Unknown method: {self.method}")
+
+    def update_reference_result(self, distance_label: str, time_str: str, source: str = "race") -> float:
+        """
+        Add a new race or treino de referência, recalculating VDOT and zones.
+
+        Args:
+            distance_label: Nome da distância (ex: "5K", "10K", "Half Marathon").
+            time_str: Tempo no formato HH:MM:SS ou MM:SS.
+            source: "race", "time_trial" ou outro identificador textual.
+
+        Returns:
+            Novo valor de VDOT calculado.
+        """
+        distance_map = {
+            "5K": 5.0,
+            "10K": 10.0,
+            "15K": 15.0,
+            "Half Marathon": 21.0975,
+            "21K": 21.0975,
+            "Marathon": 42.195,
+            "42K": 42.195,
+        }
+
+        distance_km = distance_map.get(distance_label)
+        if not distance_km:
+            raise ValueError(f"Unsupported distance label: {distance_label}")
+
+        previous_vdot = self.vdot
+        race_time = RaceTime.from_time_string(distance_km, time_str)
+        self.add_race_time(distance_label, race_time)
+        self.calculate_zones()
+
+        self.update_log.append({
+            "timestamp": datetime.now().isoformat(),
+            "distance": distance_label,
+            "time": time_str,
+            "source": source,
+            "previous_vdot": previous_vdot,
+            "new_vdot": self.vdot,
+        })
+
+        return self.vdot
 
     def _calculate_vdot_from_race(self, distance_km: float, time_seconds: int) -> float:
         """
