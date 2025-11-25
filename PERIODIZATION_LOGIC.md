@@ -20,6 +20,13 @@ O sistema utiliza **Periodização Linear** com 3 fases distintas:
 
 **Localização no código:** `plan_generator.py:240-249`
 
+### Raciocínio da periodização
+- **Segurança primeiro**: o volume começa baixo e sobe de forma quase linear, evitando saltos abruptos para reduzir risco de lesão.
+- **Pico sustentado**: manter 2-3 semanas em volume máximo ajuda a consolidar adaptações aeróbicas sem sobrecarregar o atleta.
+- **Taper agressivo**: queda de 30% e depois 50% antes da prova maximiza recuperação mantendo estímulo neuromuscular.
+- **Dias/semana adaptativos**: a distribuição de volume por dia varia conforme disponibilidade declarada, priorizando longão e sessões de qualidade.
+- **Limites de tempo**: treinos são ajustados ao tempo disponível informado; se não cabe, o volume é redistribuído para não exceder duração.
+
 ---
 
 ## 📈 Periodização Linear

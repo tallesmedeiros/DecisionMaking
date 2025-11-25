@@ -4,6 +4,8 @@
 
 ### ✅ Passo a Passo Completo
 
+Este roteiro cobre desde abrir o notebook até baixar o plano gerado. Cada item pode ser executado sequencialmente em novas sessões do Colab.
+
 ---
 
 ## 1️⃣ Abrir o Notebook no Google Colab
@@ -16,6 +18,8 @@
 4. Cole a URL: `https://github.com/tallesmedeiros/DecisionMaking`
 5. Selecione o notebook: **`create_plan_interactive.ipynb`**
 6. Clique para abrir
+
+💡 **Dica:** Na aba GitHub é possível pesquisar pelo usuário/repo (`tallesmedeiros/DecisionMaking`) se a URL inteira não carregar.
 
 ### **Opção B: Upload Manual**
 
@@ -43,6 +47,10 @@
 - ✅ `training_zones.py`
 - ✅ `running_plan.py`
 - ✅ `plan_generator.py`
+
+Se você já tem um arquivo de perfil ou plano salvo (JSON), faça upload em **Files** → **Upload** antes de rodar as células que carregam esses arquivos.
+
+Para manter os arquivos após fechar o notebook, conecte ao **Google Drive** (menu lateral esquerdo → guia *Files* → botão *Mount Drive*) e copie os JSONs para lá.
 
 ---
 
@@ -181,6 +189,8 @@ Mostra seu plano em formato visual compacto com emojis:
 
 ### 💾 **Seção 12: Salvar Plano**
 Salva o plano completo em JSON.
+
+👉 **Ordem de execução recomendada:** clique em **Runtime → Run all** ou use `Ctrl+F9` para executar todas as células do notebook já conectado ao repositório. Caso edite alguma configuração, reexecute somente a partir da célula de perfil para evitar inconsistências.
 
 ---
 
