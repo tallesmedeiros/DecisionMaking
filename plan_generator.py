@@ -308,25 +308,47 @@ class PlanGenerator:
     @classmethod
     def _determine_block_lengths(cls, total_weeks: int) -> dict:
         """Allocate 4–6 week blocks for Base, Specific and a shorter Taper."""
-        taper_weeks = max(2, min(3, int(round(total_weeks * 0.15))))
+        taper_weeks = min(max(2, min(3, int(round(total_weeks * 0.15)))), total_weeks)
         remaining = max(total_weeks - taper_weeks, 0)
 
-        base_weeks = min(6, max(4, remaining // 2)) if remaining else 0
-        specific_weeks = remaining - base_weeks
+        if remaining < 8:
+            # Plans shorter than 10 weeks can't support 4–6 week blocks; split evenly
+            if remaining <= 1:
+                base_weeks, specific_weeks = remaining, 0
+            else:
+                base_weeks = max(2, remaining // 2)
+                base_weeks = min(base_weeks, remaining - 1)
+                specific_weeks = remaining - base_weeks
+        else:
+            base_weeks = min(6, max(4, remaining // 2)) if remaining else 0
+            specific_weeks = remaining - base_weeks
 
-        # Guarantee specific block also fits the 4–6 window
-        if specific_weeks < 4 and base_weeks > 4:
-            transfer = min(base_weeks - 4, 4 - specific_weeks)
-            base_weeks -= transfer
-            specific_weeks += transfer
+            # Guarantee specific block also fits the 4–6 window
+            if specific_weeks < 4 and base_weeks > 4:
+                transfer = min(base_weeks - 4, 4 - specific_weeks)
+                base_weeks -= transfer
+                specific_weeks += transfer
 
-        specific_weeks = min(6, max(4, specific_weeks)) if remaining else 0
-        # Re-adjust base weeks if specific was clamped to 6
-        base_weeks = max(4, min(6, total_weeks - taper_weeks - specific_weeks)) if remaining else 0
+            specific_weeks = min(6, max(4, specific_weeks)) if remaining else 0
+            # Re-adjust base weeks if specific was clamped to 6
+            base_weeks = max(4, min(6, remaining - specific_weeks)) if remaining else 0
 
-        # If plan is very short, divide remaining weeks evenly between base and specific
-        if base_weeks + specific_weeks + taper_weeks < total_weeks:
-            leftover = total_weeks - (base_weeks + specific_weeks + taper_weeks)
+        # Ensure blocks never exceed available time after taper
+        total_blocks = base_weeks + specific_weeks
+        if total_blocks > remaining:
+            overflow = total_blocks - remaining
+            min_base = 2 if remaining < 8 else 4
+            min_specific = 2 if remaining < 8 else 4
+            while overflow and base_weeks > min_base and (base_weeks >= specific_weeks or specific_weeks <= min_specific):
+                base_weeks -= 1
+                overflow -= 1
+            while overflow and specific_weeks > min_specific:
+                specific_weeks -= 1
+                overflow -= 1
+            if overflow:
+                base_weeks = max(min_base, base_weeks - overflow)
+        elif total_blocks < remaining:
+            leftover = remaining - total_blocks
             base_weeks += leftover // 2
             specific_weeks += leftover - (leftover // 2)
 
