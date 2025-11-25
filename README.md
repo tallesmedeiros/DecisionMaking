@@ -112,6 +112,16 @@ python --version
 
 **🎉 Sem dependências adicionais necessárias - usa apenas a biblioteca padrão do Python!**
 
+## 🌡️ Registro de condições e hidratação
+
+Para manter o plano alinhado às condições reais da prova e do treino:
+
+- Use uma planilha ou app de treino para logar: temperatura (°C), umidade relativa (%), vento, ganho/percurso, RPE, peso pré/pós e ingestão de fluidos.
+- Fotografe ou baixe os mapas de altimetria da prova e dos treinos-chave.
+- Atualize semanalmente uma ficha de “Condições-alvo” vs. “Condições de treino”.
+
+📄 Consulte o checklist e o modelo de ficha em [TRAINING_LOG_GUIDE.md](TRAINING_LOG_GUIDE.md).
+
 ## 📚 Modos de Uso
 
 ### 📓 Jupyter Notebook (Recomendado para Aprendizado)
