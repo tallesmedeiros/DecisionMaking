@@ -1629,9 +1629,6 @@ class PlanGenerator:
         return workout
 
     @classmethod
-    def _generate_3_day_week(cls, week_num: int, weekly_distance: float, level: str, total_weeks: int,
-                             training_zones: Optional[TrainingZones] = None, goal: str = "10K",
-                             phase: str = "base") -> List[Workout]:
     def _generate_3_day_week(
         cls,
         week_num: int,
@@ -1640,6 +1637,7 @@ class PlanGenerator:
         total_weeks: int,
         training_zones: Optional[TrainingZones] = None,
         goal: str = "10K",
+        phase: str = "base",
         profile_adjustments: Optional[dict] = None,
     ) -> List[Workout]:
         """
