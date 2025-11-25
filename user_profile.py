@@ -73,9 +73,16 @@ class UserProfile:
     # Injury History
     previous_injuries: List[str] = field(default_factory=list)
     current_injuries: List[str] = field(default_factory=list)
+    injury_triggers: List[str] = field(default_factory=list)  # Gatilhos que agravam sintomas
+    red_zones: List[str] = field(default_factory=list)  # Restrições críticas para evitar overload
 
     # Equipment Access
     available_equipment: List[str] = field(default_factory=list)
+
+    # Prevention & Impact Management
+    strength_routines: List[str] = field(default_factory=list)  # Exercícios de força/prevenção em uso
+    impact_limitations: List[str] = field(default_factory=list)  # Ex.: evitar descidas, superfícies duras
+    feedback_required: bool = True  # Solicitar feedback frequente para ajustes
 
     # Metadata
     created_date: datetime = field(default_factory=datetime.now)
@@ -219,6 +226,12 @@ class UserProfile:
         if self.get_weekly_time_budget() < 3:
             modifications.append("Pouco tempo disponível - treinos mais curtos")
 
+        if self.red_zones:
+            modifications.append(f"Zonas vermelhas a respeitar: {', '.join(self.red_zones)}")
+
+        if self.impact_limitations:
+            modifications.append(f"Limites de impacto: {', '.join(self.impact_limitations)}")
+
         return (len(modifications) > 0, modifications)
 
     def to_dict(self) -> Dict:
@@ -334,11 +347,25 @@ class UserProfile:
                 result += f"   Lesões Atuais: {', '.join(self.current_injuries)}\n"
             if self.previous_injuries:
                 result += f"   Lesões Prévias: {', '.join(self.previous_injuries)}\n"
+            if self.injury_triggers:
+                result += f"   Gatilhos a evitar: {', '.join(self.injury_triggers)}\n"
+            if self.red_zones:
+                result += f"   Zonas Vermelhas (sobrecarga): {', '.join(self.red_zones)}\n"
             result += f"   Nível de Risco: {self.get_injury_risk_level()}\n"
 
         # Equipment
         if self.available_equipment:
             result += f"\n🔧 Equipamentos: {', '.join(self.available_equipment)}\n"
+
+        # Prevention / Strength routines
+        if self.strength_routines:
+            result += f"\n🏋️  Força/Prevenção em uso: {', '.join(self.strength_routines)}\n"
+
+        if self.impact_limitations:
+            result += f"\n⬇️  Limites de Impacto: {', '.join(self.impact_limitations)}\n"
+
+        if self.feedback_required:
+            result += "\n💬 Feedback: Retornar sensações semanalmente para ajustes finos no plano.\n"
 
         # Recommendations
         needs_mod, mods = self.needs_modified_plan()
