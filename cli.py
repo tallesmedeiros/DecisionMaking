@@ -162,6 +162,11 @@ def create_new_plan():
     event_date = get_date_input(
         "When is your target race? (YYYY-MM-DD)", allow_skip=True
     )
+    event_name = get_user_input("Race name", default="")
+    event_location = get_user_input("Race location (city/region)", default="")
+    event_info_source = get_user_input(
+        "Official site or course link (optional)", default=""
+    )
 
     # Get level
     level = get_user_choice(
@@ -218,6 +223,12 @@ def create_new_plan():
     print(f"Goal: {event_distance}")
     if event_date:
         print(f"Race Date: {event_date.strftime('%Y-%m-%d')}")
+    if event_name:
+        print(f"Race Name: {event_name}")
+    if event_location:
+        print(f"Race Location: {event_location}")
+    if event_info_source:
+        print(f"Reference Link: {event_info_source}")
     print(f"Level: {level}")
     print(f"Duration: {weeks} weeks")
     print(f"Training Days: {days_per_week} days/week")
@@ -246,7 +257,13 @@ def create_new_plan():
 
     # Attach contextual data
     if event_date:
-        plan.set_event_info(event_distance, event_date)
+        plan.set_event_info(
+            event_distance,
+            event_date,
+            name=event_name,
+            location=event_location,
+            info_source=event_info_source,
+        )
 
     if target_time or current_pb:
         plan.set_performance_targets(current_pb, target_time, distance_label=event_distance)
