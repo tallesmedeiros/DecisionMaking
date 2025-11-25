@@ -39,7 +39,7 @@ def get_user_choice(prompt: str, options: list) -> str:
 def get_user_input(prompt: str, default=None) -> str:
     """Get text input from user."""
     try:
-        if default:
+        if default is not None:
             user_input = input(f"{prompt} [{default}]: ").strip()
             return user_input if user_input else default
         else:
@@ -98,6 +98,54 @@ def get_yes_no(prompt: str, default: bool = False) -> bool:
         sys.exit(0)
 
 
+def get_date_input(prompt: str, allow_skip: bool = False, default: str = None):
+    """Get a date from user in YYYY-MM-DD format."""
+
+    while True:
+        try:
+            if default:
+                raw = input(f"{prompt} [{default}]: ").strip()
+                if not raw:
+                    raw = default
+            else:
+                raw = input(f"{prompt}: ").strip()
+
+            if allow_skip and not raw:
+                return None
+
+            return datetime.strptime(raw, '%Y-%m-%d')
+        except ValueError:
+            print("Invalid date format. Please use YYYY-MM-DD")
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting...")
+            sys.exit(0)
+
+
+def get_time_input(prompt: str, allow_skip: bool = False):
+    """Get a time string in HH:MM:SS or MM:SS format."""
+
+    while True:
+        try:
+            raw = input(f"{prompt}: ").strip()
+            if allow_skip and not raw:
+                return None
+
+            parts = raw.split(":")
+            if len(parts) not in (2, 3):
+                print("Use HH:MM:SS or MM:SS format")
+                continue
+
+            # Validate numeric values
+            if not all(part.isdigit() for part in parts):
+                print("Use only numbers and colons (e.g., 00:45:00)")
+                continue
+
+            return raw
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting...")
+            sys.exit(0)
+
+
 def create_new_plan():
     """Interactive function to create a new running plan."""
     print("\n--- Create New Running Plan ---\n")
@@ -105,10 +153,14 @@ def create_new_plan():
     # Get plan name
     plan_name = get_user_input("Plan name", default=f"My Training Plan {datetime.now().strftime('%Y-%m-%d')}")
 
-    # Get goal
-    goal = get_user_choice(
-        "\nWhat is your race goal?",
+    # Get event and goal
+    event_distance = get_user_choice(
+        "\nWhat is your target race distance?",
         ["5K", "10K", "Half Marathon", "Marathon"]
+    )
+
+    event_date = get_date_input(
+        "When is your target race? (YYYY-MM-DD)", allow_skip=True
     )
 
     # Get level
@@ -118,7 +170,7 @@ def create_new_plan():
     )
 
     # Get duration
-    default_weeks = PlanGenerator._get_default_weeks(goal)
+    default_weeks = PlanGenerator._get_default_weeks(event_distance)
     weeks = get_number_input(
         f"\nHow many weeks for your plan?",
         min_val=4,
@@ -134,13 +186,35 @@ def create_new_plan():
         default=4
     )
 
+    # Get performance context
+    current_pb = get_time_input("\nWhat's your current PB for this distance? (HH:MM:SS)", allow_skip=True)
+    target_time = get_time_input("What's your target finish time? (HH:MM:SS)", allow_skip=True)
+
+    # Motivation and logistics
+    motivation = get_user_input("\nWhat's your main motivation for this race?", default="")
+    logistics_raw = get_user_input(
+        "Any logistical constraints (surface, schedule, location)? Separate by commas",
+        default=""
+    )
+    logistics = [item.strip() for item in logistics_raw.split(',') if item.strip()]
+
     # Confirm
     print("\n--- Plan Summary ---")
     print(f"Name: {plan_name}")
-    print(f"Goal: {goal}")
+    print(f"Goal: {event_distance}")
+    if event_date:
+        print(f"Race Date: {event_date.strftime('%Y-%m-%d')}")
     print(f"Level: {level}")
     print(f"Duration: {weeks} weeks")
     print(f"Training Days: {days_per_week} days/week")
+    if current_pb:
+        print(f"Current PB: {current_pb}")
+    if target_time:
+        print(f"Target Time: {target_time}")
+    if motivation:
+        print(f"Motivation: {motivation}")
+    if logistics:
+        print(f"Logistics: {', '.join(logistics)}")
 
     if not get_yes_no("\nCreate this plan?", default=True):
         print("Plan creation cancelled.")
@@ -150,11 +224,20 @@ def create_new_plan():
     print("\nGenerating your training plan...")
     plan = PlanGenerator.generate_plan(
         name=plan_name,
-        goal=goal,
+        goal=event_distance,
         level=level,
         weeks=weeks,
         days_per_week=days_per_week
     )
+
+    # Attach contextual data
+    if event_date:
+        plan.set_event_info(event_distance, event_date)
+
+    if target_time or current_pb:
+        plan.set_performance_targets(current_pb, target_time, distance_label=event_distance)
+
+    plan.update_training_context(motivation=motivation, logistics=logistics)
 
     # Ask for start date
     if get_yes_no("\nWould you like to set a start date?", default=True):
