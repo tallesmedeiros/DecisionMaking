@@ -176,47 +176,66 @@ class Workout:
         return label_map.get(self.type, self.type)
 
     def to_visual_str(self, date: Optional[datetime] = None) -> str:
-        """Return compact visual representation with emojis."""
-        if self.type == "Rest":
-            if date:
-                date_str = f"{self.day.capitalize()} ({date.strftime('%d/%m')})"
-                return f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}"
-            return f"  📍 {self.day}: {self.get_emoji()} {self.get_type_label()}"
+        """Return an illustrated visual representation with emojis and clear sections."""
 
-        # Build compact workout description
-        parts = []
+        def _segment_icon(name: str) -> str:
+            name_lower = name.lower()
+            if "aquec" in name_lower or "warm" in name_lower:
+                return "🔥"
+            if "desaquec" in name_lower or "cool" in name_lower:
+                return "❄️"
+            if "interval" in name_lower or "tiro" in name_lower:
+                return "⚡"
+            if "recup" in name_lower:
+                return "🔄"
+            if "tempo" in name_lower or "limiar" in name_lower:
+                return "⏱️"
+            if "fartlek" in name_lower:
+                return "🎲"
+            return "🔸"
 
-        if self.has_detailed_structure():
-            # Compact format with segments
-            for segment in self.segments:
-                compact = segment.to_compact_str()
-                if compact:
-                    parts.append(compact)
-            workout_desc = " + ".join(parts)
-        else:
-            # Simple format without segments
-            if self.distance_km:
-                workout_desc = f"{self.distance_km}km"
-            elif self.duration_minutes:
-                workout_desc = f"{self.duration_minutes}min"
-            else:
-                workout_desc = ""
-
-            if self.target_pace:
-                workout_desc += f" @ {self.target_pace}/km"
-
-        # Format with date if provided
         if date:
             date_str = f"{self.day.capitalize()} ({date.strftime('%d/%m')})"
         else:
             date_str = self.day
 
-        # Add time estimate if available
-        time_str = ""
-        if self.total_time_estimated:
-            time_str = f" [{self.total_time_estimated}]"
+        header = f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}"
+        if self.type == "Rest":
+            return header
 
-        return f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}: {workout_desc}{time_str}"
+        summary_parts = []
+        if self.distance_km:
+            summary_parts.append(f"{self.distance_km}km")
+        elif self.duration_minutes:
+            summary_parts.append(f"{self.duration_minutes}min")
+
+        if self.target_pace:
+            summary_parts.append(f"@ {self.target_pace}/km")
+        if self.training_zone:
+            summary_parts.append(f"Zona {self.training_zone}")
+        if self.total_time_estimated:
+            summary_parts.append(f"⏱️ {self.total_time_estimated}")
+
+        block_lines = [header]
+
+        if summary_parts:
+            block_lines.append(f"     🧭 Resumo: {' | '.join(summary_parts)}")
+
+        if self.has_detailed_structure():
+            block_lines.append("     🧩 Blocos:")
+            for segment in self.segments:
+                compact = segment.to_compact_str()
+                if compact:
+                    block_lines.append(f"       {_segment_icon(segment.name)} {compact}")
+
+        if self.description:
+            block_lines.append(f"     📝 Notas: {self.description}")
+
+        if self.surface_options:
+            surfaces = ", ".join(self.surface_options)
+            block_lines.append(f"     🏞️ Terrenos: {surfaces}")
+
+        return "\n".join(block_lines)
 
     def __str__(self):
         result = f"{self.day}: {self.type}"
@@ -312,11 +331,13 @@ class Week:
             "Friday": 4, "Saturday": 5, "Sunday": 6
         }
 
-        for workout in self.workouts:
+        for idx, workout in enumerate(self.workouts):
             workout_date = None
             if week_start and workout.day in days_map:
                 workout_date = week_start + timedelta(days=days_map[workout.day])
             result += workout.to_visual_str(workout_date) + "\n"
+            if idx < len(self.workouts) - 1:
+                result += "  ┈┈┈┈┈┈┈┈┈┈┈┈\n"
 
         return result
 
