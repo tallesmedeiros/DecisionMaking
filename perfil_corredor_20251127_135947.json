@@ -1,0 +1,153 @@
+{
+  "name": "Corredor(a)",
+  "age": 30,
+  "weight_kg": 70.0,
+  "height_cm": 175.0,
+  "gender": "M",
+  "years_running": 12.0,
+  "current_weekly_km": 35.0,
+  "average_weekly_km": 40.0,
+  "recent_peak_weekly_km": 60.0,
+  "consistent_days_per_week": 4,
+  "tolerated_workouts": [
+    "Corridas fáceis/rodagens",
+    "Intervalos curtos",
+    "Intervalos longos",
+    "Tempo run",
+    "Fartlek",
+    "Longões progressivos",
+    "Treino de trilha/terreno variado"
+  ],
+  "adherence_score": 85,
+  "experience_level": "intermediate",
+  "main_race": {
+    "distance": "5K",
+    "date": "2025-12-28",
+    "name": "Corrida local",
+    "location": "Belo Horizonte",
+    "is_main_goal": true,
+    "target_time": "00:16:00"
+  },
+  "test_races": [],
+  "secondary_objectives": [
+    "Performance/Tempo",
+    "Desafio Pessoal"
+  ],
+  "days_per_week": 5,
+  "hours_per_day": 1.5,
+  "preferred_time": "manhã",
+  "preferred_location": [
+    "rua",
+    "trilha",
+    "pista",
+    "esteira"
+  ],
+  "preferred_days": [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday"
+  ],
+  "stressful_blocks": {
+    "Monday": [
+      "night"
+    ],
+    "Tuesday": [
+      "night"
+    ],
+    "Wednesday": [
+      "night"
+    ],
+    "Thursday": [
+      "night"
+    ],
+    "Friday": [
+      "night"
+    ],
+    "Saturday": [
+      "night"
+    ],
+    "Sunday": [
+      "night"
+    ]
+  },
+  "long_run_preference_days": [
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday"
+  ],
+  "use_alternating_weeks": false,
+  "alternate_stressful_blocks": {
+    "Monday": [
+      "night"
+    ],
+    "Tuesday": [
+      "night"
+    ],
+    "Wednesday": [
+      "night"
+    ],
+    "Thursday": [
+      "night"
+    ],
+    "Friday": [
+      "night"
+    ],
+    "Saturday": [
+      "night"
+    ],
+    "Sunday": [
+      "night"
+    ]
+  },
+  "alternate_long_run_days": [
+    "Saturday",
+    "Sunday"
+  ],
+  "weekly_schedule": {},
+  "default_warmup_minutes": 10,
+  "default_cooldown_minutes": 10,
+  "commute_minutes": 0,
+  "typical_key_workout_rpe": 7,
+  "long_session_tolerance": "moderada",
+  "variety_preference": "moderada",
+  "social_training_options": [],
+  "routine_vs_fun_balance": "equilibrado",
+  "recent_race_times": {
+    "5K": "00:16:00",
+    "10K": "00:33:20",
+    "Half Marathon": "01:15:00",
+    "Marathon": "02:50:00"
+  },
+  "zones_calculation_method": "jack_daniels",
+  "zone_mix_preference": {
+    "easy": 0.55,
+    "tempo": 0.25,
+    "interval": 0.2
+  },
+  "vdot_estimate": null,
+  "hr_resting": null,
+  "hr_max": null,
+  "initial_weekly_km": null,
+  "session_preferences": {
+    "intervals": true,
+    "tempo": true,
+    "long_run": true,
+    "cross_training": false
+  },
+  "previous_injuries": [],
+  "current_injuries": [],
+  "injury_triggers": [],
+  "red_zones": [],
+  "available_equipment": [],
+  "strength_routines": [],
+  "impact_limitations": [],
+  "feedback_required": true,
+  "created_date": "2025-11-27T13:59:04.790372",
+  "last_updated": "2025-11-27T13:59:04.790375",
+  "classification": "intermediate"
+}
