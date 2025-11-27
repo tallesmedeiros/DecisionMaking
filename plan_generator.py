@@ -7,6 +7,7 @@ from running_plan import (
     Week,
     Workout,
     WorkoutSegment,
+    IntervalSessionDetails,
     round_to_nearest_5km,
     round_to_nearest_30min,
     round_to_nearest_5min,
@@ -621,6 +622,7 @@ class PlanGenerator:
                                 break
 
         return adjusted_workouts
+    @classmethod
     def _normalize_day_name(cls, day: str) -> str:
         """Normalize day names, supporting English and Portuguese inputs."""
         if not day:
@@ -789,6 +791,100 @@ class PlanGenerator:
         min_distance = (min_minutes * 60) / pace_seconds_per_km
         max_distance = (max_minutes * 60) / pace_seconds_per_km
         return min(max_distance, max(min_distance, desired_distance_km))
+
+    @staticmethod
+    def _format_distance_label(distance_km: Optional[float]) -> str:
+        """Format distance in km or meters for human-friendly display."""
+        if distance_km is None:
+            return "-"
+        if distance_km < 1:
+            return f"{int(distance_km * 1000)} m"
+        return f"{distance_km} km"
+
+    @staticmethod
+    def _format_time_label(minutes: Optional[float]) -> str:
+        """Format a time duration in minutes (with seconds) for display."""
+        if minutes is None:
+            return "-"
+        total_seconds = int(round(minutes * 60))
+        mins, secs = divmod(total_seconds, 60)
+        if secs == 0:
+            return f"{mins} min"
+        return f"{mins}min{secs:02d}s"
+
+    @classmethod
+    def _build_interval_details(
+        cls,
+        workout: Workout,
+        warmup_minutes: int,
+        warmup_pace: str,
+        cooldown_minutes: int,
+        cooldown_pace: str,
+        series_count: int,
+        reps_per_series: int,
+        rep_distance_km: float,
+        rep_time_minutes: int,
+        rep_pace: Optional[str],
+        intensity: str,
+        recovery_between_reps: int,
+        recovery_between_series: Optional[int],
+        objective: str,
+    ) -> IntervalSessionDetails:
+        """Create a detailed interval session summary with emojis."""
+
+        total_volume = cls._format_distance_label(workout.distance_km)
+        if workout.total_time_estimated:
+            total_volume = f"{total_volume} · {workout.total_time_estimated}"
+
+        series_label = f"{series_count} série" if series_count == 1 else f"{series_count} séries"
+        reps_label = f"{reps_per_series} repetições por série"
+
+        rep_parts = []
+        distance_label = cls._format_distance_label(rep_distance_km)
+        if distance_label != "-":
+            rep_parts.append(distance_label)
+
+        time_label = cls._format_time_label(rep_time_minutes)
+        if time_label != "-":
+            rep_parts.append(time_label)
+
+        if rep_pace:
+            rep_parts.append(f"@ {rep_pace}/km")
+
+        rep_spec = " · ".join(rep_parts) if rep_parts else "-"
+
+        recovery_reps_label = cls._format_time_label(recovery_between_reps)
+        recovery_series_label = (
+            cls._format_time_label(recovery_between_series)
+            if recovery_between_series and recovery_between_series > 0
+            else "Sem pausa extra"
+        )
+
+        main_block = f"{reps_per_series} × {rep_spec}"
+        if intensity:
+            main_block += f" | {intensity}"
+
+        if recovery_reps_label != "-":
+            main_block += f" c/ {recovery_reps_label} rec"
+
+        if series_count > 1:
+            main_block = f"{series_label} de {main_block}"
+            if recovery_between_series:
+                main_block += f" | pausa séries: {recovery_series_label}"
+
+        return IntervalSessionDetails(
+            main_set=main_block,
+            total_volume=total_volume,
+            warmup=f"{cls._format_time_label(warmup_minutes)} @ {warmup_pace}/km (fácil)",
+            cooldown=f"{cls._format_time_label(cooldown_minutes)} @ {cooldown_pace}/km (fácil)",
+            num_series=series_label,
+            reps_per_series=reps_label,
+            rep_spec=f"{rep_spec}",
+            intensity=intensity,
+            recovery_between_reps=f"{recovery_reps_label} trote/caminhada",
+            recovery_between_series=recovery_series_label,
+            objective=objective,
+        )
     def _parse_pace_str(pace_str: Optional[str]) -> Optional[float]:
         """Convert a pace string (MM:SS) to seconds per km."""
         if not pace_str:
@@ -1183,6 +1279,23 @@ class PlanGenerator:
             total_time_rounded = round_to_nearest_30min(total_time / 60) * 60
             workout.total_time_estimated = training_zones.get_time_str(total_time_rounded)
 
+            workout.interval_details = cls._build_interval_details(
+                workout=workout,
+                warmup_minutes=warmup_time,
+                warmup_pace=warmup_pace,
+                cooldown_minutes=cooldown_time,
+                cooldown_pace=cooldown_pace,
+                series_count=1,
+                reps_per_series=num_repeats,
+                rep_distance_km=work_per_repeat,
+                rep_time_minutes=work_time_per,
+                rep_pace=interval_pace,
+                intensity=f"{interval_pace}/km (VO₂máx)",
+                recovery_between_reps=recovery_time_per,
+                recovery_between_series=None,
+                objective=workout.description,
+            )
+
         return workout
 
     @classmethod
@@ -1330,6 +1443,22 @@ class PlanGenerator:
 
             total_time = warmup_time + (work_time_per + recovery_time_per) * num_repeats + cooldown_time
             workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
+            workout.interval_details = cls._build_interval_details(
+                workout=workout,
+                warmup_minutes=warmup_time,
+                warmup_pace=warmup_pace,
+                cooldown_minutes=cooldown_time,
+                cooldown_pace=cooldown_pace,
+                series_count=1,
+                reps_per_series=num_repeats,
+                rep_distance_km=repeat_distance,
+                rep_time_minutes=work_time_per,
+                rep_pace=race_pace,
+                intensity=f"{race_pace}/km (ritmo de prova {goal})",
+                recovery_between_reps=recovery_time_per,
+                recovery_between_series=None,
+                objective=workout.description,
+            )
 
         return workout
 
@@ -1418,6 +1547,22 @@ class PlanGenerator:
 
             total_time = warmup_time + (work_time_per + recovery_time_per) * num_repeats + cooldown_time
             workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
+            workout.interval_details = cls._build_interval_details(
+                workout=workout,
+                warmup_minutes=warmup_time,
+                warmup_pace=warmup_pace,
+                cooldown_minutes=cooldown_time,
+                cooldown_pace=cooldown_pace,
+                series_count=1,
+                reps_per_series=num_repeats,
+                rep_distance_km=base_interval,
+                rep_time_minutes=work_time_per,
+                rep_pace=interval_pace,
+                intensity=f"{interval_pace}/km (trabalho de velocidade)",
+                recovery_between_reps=recovery_time_per,
+                recovery_between_series=None,
+                objective=workout.description,
+            )
 
         return workout
 
@@ -1506,6 +1651,22 @@ class PlanGenerator:
 
             total_time = warmup_time + (work_time_per + recovery_time_per) * num_repeats + cooldown_time
             workout.total_time_estimated = training_zones.get_time_str(total_time * 60)
+            workout.interval_details = cls._build_interval_details(
+                workout=workout,
+                warmup_minutes=warmup_time,
+                warmup_pace=warmup_pace,
+                cooldown_minutes=cooldown_time,
+                cooldown_pace=cooldown_pace,
+                series_count=1,
+                reps_per_series=num_repeats,
+                rep_distance_km=base_interval,
+                rep_time_minutes=work_time_per,
+                rep_pace=threshold_pace,
+                intensity=f"{threshold_pace}/km (ritmo de limiar)",
+                recovery_between_reps=recovery_time_per,
+                recovery_between_series=None,
+                objective=workout.description,
+            )
 
         return workout
 

@@ -117,6 +117,39 @@ class WorkoutSegment:
 
 
 @dataclass
+class IntervalSessionDetails:
+    """Detailed information for interval workouts."""
+
+    main_set: str
+    total_volume: str
+    warmup: str
+    cooldown: str
+    num_series: str
+    reps_per_series: str
+    rep_spec: str
+    intensity: str
+    recovery_between_reps: str
+    recovery_between_series: str
+    objective: str
+
+    def to_lines(self) -> List[str]:
+        """Return human-friendly bullet points with emojis."""
+        return [
+            f"⚡ Bloco principal: {self.main_set}",
+            f"📏 Volume: {self.total_volume}",
+            f"🔥 Aquecimento: {self.warmup}",
+            f"❄️ Desaquecimento: {self.cooldown}",
+            f"📦 Séries: {self.num_series}",
+            f"🔂 Repetições: {self.reps_per_series}",
+            f"⚡ Tiro: {self.rep_spec}",
+            f"🏁 Intensidade: {self.intensity}",
+            f"🔄 Pausa entre reps: {self.recovery_between_reps}",
+            f"⏸️ Pausa entre séries: {self.recovery_between_series}",
+            f"🎯 Objetivo: {self.objective}",
+        ]
+
+
+@dataclass
 class Workout:
     """Represents a single workout session with detailed structure."""
     day: str
@@ -130,6 +163,7 @@ class Workout:
     segments: List[WorkoutSegment] = field(default_factory=list)
     total_time_estimated: Optional[str] = None  # HH:MM:SS or MM:SS
     total_minutes: Optional[int] = None
+    interval_details: Optional[IntervalSessionDetails] = None
 
     # Session logistics
     warmup_minutes: int = 0
@@ -156,6 +190,9 @@ class Workout:
             "Long Run": "🟢",
             "Tempo Run": "🟠",
             "Interval Training": "🔴",
+            "Short Intervals": "🔴",
+            "Long Intervals": "🔴",
+            "Race Pace Intervals": "🔴",
             "Fartlek": "🟡",
             "Rest": "😴",
             "Cross Training": "🔵"
@@ -169,6 +206,9 @@ class Workout:
             "Long Run": "Longão",
             "Tempo Run": "Tempo",
             "Interval Training": "Intervalos",
+            "Short Intervals": "Intervalos", 
+            "Long Intervals": "Intervalos",
+            "Race Pace Intervals": "Intervalos",
             "Fartlek": "Fartlek",
             "Rest": "Descanso",
             "Cross Training": "Cross"
@@ -220,6 +260,11 @@ class Workout:
 
         if summary_parts:
             block_lines.append(f"     🧭 Resumo: {' | '.join(summary_parts)}")
+
+        if self.interval_details:
+            block_lines.append("     📋 Estrutura detalhada:")
+            for detail_line in self.interval_details.to_lines():
+                block_lines.append(f"       {detail_line}")
 
         if self.has_detailed_structure():
             block_lines.append("     🧩 Blocos:")
