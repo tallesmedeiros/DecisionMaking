@@ -72,6 +72,16 @@ class TrainingZones:
         'repetition': 'Repetition/Fast',
     }
 
+    DISTANCE_LABELS = {
+        "5K": 5.0,
+        "10K": 10.0,
+        "15K": 15.0,
+        "Half Marathon": 21.0975,
+        "21K": 21.0975,
+        "Marathon": 42.195,
+        "42K": 42.195,
+    }
+
     def __init__(self, method: str = 'jack_daniels'):
         """
         Initialize training zones calculator.
@@ -85,9 +95,52 @@ class TrainingZones:
         self.race_times: Dict[str, RaceTime] = {}
         self.update_log = []
 
+    @staticmethod
+    def _distance_from_label(label: str) -> float:
+        """Resolve common distance labels to kilometers."""
+        if label in TrainingZones.DISTANCE_LABELS:
+            return TrainingZones.DISTANCE_LABELS[label]
+        if label.upper().endswith("K"):
+            try:
+                return float(label[:-1])
+            except ValueError:
+                pass
+        raise ValueError(f"Unsupported distance label: {label}")
+
+    @staticmethod
+    def _label_from_distance(distance_km: float) -> str:
+        """Return a standard label for a given distance in km."""
+        for label, km in TrainingZones.DISTANCE_LABELS.items():
+            if abs(km - distance_km) < 1e-3:
+                return label
+        return f"{distance_km:g}K"
+
     def add_race_time(self, name: str, race_time: RaceTime):
         """Add a race time to the calculator."""
         self.race_times[name] = race_time
+
+    def add_race_result(self, distance_km: float, time_str: str, label: Optional[str] = None, source: str = "race"):
+        """Add a race result and refresh VDOT/zones immediately."""
+        if distance_km <= 0:
+            raise ValueError("Distance must be positive")
+
+        name = label or self._label_from_distance(distance_km)
+        race_time = RaceTime.from_time_string(distance_km, time_str)
+        previous_vdot = self.vdot
+
+        self.add_race_time(name, race_time)
+        self.calculate_zones()
+
+        self.update_log.append({
+            "timestamp": datetime.now().isoformat(),
+            "distance": name,
+            "time": time_str,
+            "source": source,
+            "previous_vdot": previous_vdot,
+            "new_vdot": self.vdot,
+        })
+
+        return self.vdot
 
     def calculate_zones(self):
         """Calculate training zones based on race times and selected method."""
