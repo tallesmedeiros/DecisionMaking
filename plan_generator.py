@@ -622,6 +622,7 @@ class PlanGenerator:
                                 break
 
         return adjusted_workouts
+    @classmethod
     def _normalize_day_name(cls, day: str) -> str:
         """Normalize day names, supporting English and Portuguese inputs."""
         if not day:
