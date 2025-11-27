@@ -120,6 +120,7 @@ class WorkoutSegment:
 class IntervalSessionDetails:
     """Detailed information for interval workouts."""
 
+    main_set: str
     total_volume: str
     warmup: str
     cooldown: str
@@ -134,6 +135,7 @@ class IntervalSessionDetails:
     def to_lines(self) -> List[str]:
         """Return human-friendly bullet points with emojis."""
         return [
+            f"⚡ Bloco principal: {self.main_set}",
             f"📏 Volume: {self.total_volume}",
             f"🔥 Aquecimento: {self.warmup}",
             f"❄️ Desaquecimento: {self.cooldown}",
