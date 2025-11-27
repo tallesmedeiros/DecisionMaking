@@ -6,6 +6,14 @@ Um software completo em Python para criar planos de treino de corrida personaliz
 
 O Criador de Planos de Corrida é um **gerador automático de periodizações**. Ele coleta dados do atleta (tempo disponível, experiência, tempos de prova e histórico de lesões), calcula zonas de treino com métodos consagrados e produz um plano semanal completo com volume, distribuição de intensidades e treinos detalhados. Tudo é feito em Python, sem dependências externas, podendo ser usado via notebook, linha de comando ou integração com Intervals.icu.
 
+### Principais Conceitos
+
+- **Perfil do corredor**: definido por dias disponíveis, volume semanal máximo, preferências de dias de treino, histórico de lesões e objetivo de distância.
+- **Geração do plano**: o `PlanGenerator` estrutura semanas com fases de base, construção, pico e taper, distribuindo treinos de intensidade e rodagens leves conforme o nível do atleta.
+- **Zonas de treino**: calculadas via `training_zones.py` com métodos Jack Daniels (VDOT) ou Velocidade Crítica, produzindo paces alvo para as zonas Easy, Marathon, Threshold, Interval e Repetition.
+- **Persistência**: os planos são serializados/deserializados por `running_plan.py`, permitindo salvar em JSON, reabrir e enviar para outras integrações.
+- **Visualização**: `plot_utils.py` oferece gráficos de volume semanal e distribuição de zonas para validar a progressão e a carga.
+
 ## ✨ Funcionalidades
 
 - **🎯 Múltiplas Distâncias**: Suporte para treinos de 5K, 10K, Meia Maratona e Maratona
@@ -62,6 +70,41 @@ O Criador de Planos de Corrida é um **gerador automático de periodizações**.
 
 - **⚡ Paces Personalizados**: Baseados nos seus tempos de 5K, 10K, Meia Maratona ou Maratona
 - **🔄 Compatível com Versões Anteriores**: Funciona com ou sem zonas de treino
+
+## 🧭 Visão Geral de Arquitetura
+
+- `user_profile.py`: coleta e valida as preferências do atleta (dias livres, horários, limitações e histórico de lesões).
+- `plan_generator.py`: gera a periodização semanal, decide tipos de sessão (fácil, tempo, intervalado, longão) e distribui volume total.
+- `running_plan.py`: representa o plano final com semanas, treinos, datas e oferece métodos para salvar/carregar em JSON.
+- `training_zones.py`: calcula paces alvo a partir de tempos recentes de prova, suportando múltiplos métodos.
+- `plot_utils.py`: cria gráficos para revisar volume e distribuição de zonas.
+- `intervals_integration.py`: conecta o plano ao Intervals.icu (upload e teste de credenciais).
+- Notebooks (`create_plan_interactive.ipynb`, `formulario_corredor*.ipynb`): fluxos guiados para usuários não técnicos.
+
+### Fluxo de geração
+
+1. **Coleta de dados** (CLI ou notebook) → `UserProfile`.
+2. **Cálculo de zonas (opcional)** → `TrainingZones`.
+3. **Criação do plano** → `PlanGenerator.generate_plan(...)` retorna um `RunningPlan`.
+4. **Ajustes de datas e volumes** → métodos `set_start_date`, `adjust_volumes`, etc.
+5. **Persistência** → `save_to_file`/`load_from_file`.
+6. **Visualização e upload** → `plot_utils` e `IntervalsUploader`.
+
+## 🛠️ Configuração e Dados
+
+- **Entrada mínima**: objetivo de prova (5K/10K/21K/42K), nível (iniciante/intermediário/avançado), semanas e dias/semana.
+- **Entrada recomendada**: tempos recentes de prova para gerar zonas; disponibilidade diária; restrições de volume semanal; data de início.
+- **Saída**: JSON com semanas e treinos, incluindo pace/duração-alvo e estruturas (aquecimento, principal, desaquecimento).
+- **Configuração de credenciais**: crie `intervals_config.json` (ou use `create_config_file`) para Intervals.icu; o arquivo já está no `.gitignore`.
+- **Local dos planos**: arquivos `.json` gerados via CLI/Notebooks/`RunningPlan.save_to_file`.
+
+## 📈 Recursos Avançados
+
+- **Personalização de zonas**: escolha o método (`jack_daniels` ou `critical_velocity`), adicione múltiplos tempos de prova e visualize com `to_table()`.
+- **Distribuição de cargas**: use `get_zone_distributions()` e `plot_zone_distribution_stacked()` para auditar intensidade semanal.
+- **Análise de volume**: `get_weekly_volumes()` e `plot_weekly_volume()` ajudam a detectar picos bruscos.
+- **Restrições de tempo**: o gerador respeita limites de duração por sessão, priorizando treinos-chave mesmo com pouco tempo disponível.
+- **Compatibilidade**: planos sem zonas continuam funcionando; o arredondamento garante paces/distâncias amigáveis a relógios de treino.
 
 ## 🚀 Início Rápido
 
@@ -350,6 +393,13 @@ print(f"Volumes: {volumes}")
 # 6. Obtenha distribuição de zonas
 distributions = plan.get_zone_distributions()
 ```
+
+## ✅ Testes e Validação
+
+- **Testes automatizados**: execute `python -m pytest` para validar geração de planos, integração de perfis e arredondamentos.
+- **Sanidade manual**: gere um plano curto (4–6 semanas) e confira se volumes semanais sobem gradualmente e o taper reduz ~30% na última semana.
+- **Conferência de paces**: compare a tabela de zonas com seus tempos recentes e ajuste o método (VDOT vs Velocidade Crítica) se notar discrepâncias de ritmo.
+- **Validação de upload**: antes de enviar ao Intervals.icu, use `IntervalsUploader.test_connection()` para garantir que a API Key está correta.
 
 ### 📊 Visualizações (Jupyter Notebook)
 
