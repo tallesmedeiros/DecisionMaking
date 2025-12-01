@@ -239,9 +239,7 @@ class Workout:
         else:
             date_str = self.day
 
-        header = f"  📍 {date_str}: {self.get_emoji()} {self.get_type_label()}"
-        if self.type == "Rest":
-            return header
+        header = f"  📍 {date_str} | {self.get_emoji()} {self.get_type_label()}"
 
         summary_parts = []
         if self.distance_km:
@@ -258,27 +256,47 @@ class Workout:
 
         block_lines = [header]
 
+        # Rest days still show notes or logistics if available
+        if self.type == "Rest":
+            if self.description:
+                block_lines.append(f"     📝 Notas: {self.description}")
+            return "\n".join(block_lines)
+
         if summary_parts:
-            block_lines.append(f"     🧭 Resumo: {' | '.join(summary_parts)}")
+            block_lines.append(f"     ├─ 🧭 Resumo: {' | '.join(summary_parts)}")
+
+        logistics_parts = []
+        if self.warmup_minutes:
+            logistics_parts.append(f"🔥 {self.warmup_minutes}min aquece")
+        if self.cooldown_minutes:
+            logistics_parts.append(f"❄️ {self.cooldown_minutes}min volta calma")
+        if self.commute_minutes:
+            logistics_parts.append(f"🚲 {self.commute_minutes}min deslocamento")
+        if logistics_parts:
+            block_lines.append(f"     ├─ 🧳 Logística: {' | '.join(logistics_parts)}")
 
         if self.interval_details:
-            block_lines.append("     📋 Estrutura detalhada:")
+            block_lines.append("     ├─ 📋 Estrutura detalhada:")
             for detail_line in self.interval_details.to_lines():
-                block_lines.append(f"       {detail_line}")
+                block_lines.append(f"     │    {detail_line}")
 
         if self.has_detailed_structure():
-            block_lines.append("     🧩 Blocos:")
+            block_lines.append("     ├─ 🧩 Blocos:")
             for segment in self.segments:
                 compact = segment.to_compact_str()
                 if compact:
-                    block_lines.append(f"       {_segment_icon(segment.name)} {compact}")
+                    block_lines.append(f"     │    {_segment_icon(segment.name)} {compact}")
 
         if self.description:
-            block_lines.append(f"     📝 Notas: {self.description}")
+            block_lines.append(f"     ├─ 📝 Notas: {self.description}")
 
         if self.surface_options:
             surfaces = ", ".join(self.surface_options)
-            block_lines.append(f"     🏞️ Terrenos: {surfaces}")
+            block_lines.append(f"     └─ 🏞️ Terrenos: {surfaces}")
+        else:
+            # Replace last branch connector for cleaner tree if no surfaces are shown
+            if block_lines[-1].startswith("     ├"):
+                block_lines[-1] = block_lines[-1].replace("├", "└", 1)
 
         return "\n".join(block_lines)
 
@@ -368,7 +386,7 @@ class Week:
         if self.notes:
             result += f"💡 {self.notes}\n"
 
-        result += f"{'='*70}\n"
+        result += f"{'-'*70}\n"
 
         # Workouts in visual format
         days_map = {
@@ -380,9 +398,11 @@ class Week:
             workout_date = None
             if week_start and workout.day in days_map:
                 workout_date = week_start + timedelta(days=days_map[workout.day])
-            result += workout.to_visual_str(workout_date) + "\n"
+            result += workout.to_visual_str(workout_date)
             if idx < len(self.workouts) - 1:
-                result += "  ┈┈┈┈┈┈┈┈┈┈┈┈\n"
+                result += "\n  ─────────────────────────────────────────────\n"
+            else:
+                result += "\n"
 
         return result
 
@@ -733,6 +753,12 @@ class RunningPlan:
                 result += f"💡 Motivação: {self.training_context.motivation}\n"
             if self.training_context.logistics:
                 result += f"🚧 Restrições logísticas: {', '.join(self.training_context.logistics)}\n"
+
+        result += "\n📌 Legenda rápida:\n"
+        result += "  🧭 resumo | 🧳 logística | 🧩 blocos | 📝 notas | 🏞️ terreno\n"
+        result += "  🔴 intervalado | 🟠 ritmo tempo | 🟢 corrida fácil | 😴 descanso\n"
+        result += "  🔥 aquece | ❄️ volta calma | ⚡ tiros | 🔄 pausa | ⏱️ ritmo | 🎲 fartlek\n"
+        result += f"{'-'*70}\n"
 
         if self.environment_strategy and self.environment_strategy.has_conditions():
             result += "🌤️ Ajustes para condições da prova:\n"
