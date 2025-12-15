@@ -16,6 +16,15 @@ from training_zones import TrainingZones, RaceTime
 from typing import List, Optional, Tuple, TYPE_CHECKING
 from datetime import timedelta
 
+# Import workout library for session selection
+from workout_library import (
+    WorkoutLibrary,
+    WorkoutCategory,
+    TrainingPhase,
+    AthleteLevel,
+    get_workout_session,
+)
+
 if TYPE_CHECKING:
     from user_profile import UserProfile
 
@@ -61,6 +70,181 @@ class PlanGenerator:
         "sabado-feira": "Saturday",
         "domingo": "Sunday",
     }
+
+    # Workout library instance for session selection
+    _workout_library = WorkoutLibrary()
+
+    # Mapping from workout types to library categories
+    WORKOUT_TYPE_TO_CATEGORY = {
+        "easy run": WorkoutCategory.EASY,
+        "easy": WorkoutCategory.EASY,
+        "recovery run": WorkoutCategory.RECOVERY,
+        "recovery": WorkoutCategory.RECOVERY,
+        "long run": WorkoutCategory.LONG,
+        "long": WorkoutCategory.LONG,
+        "progressive long run": WorkoutCategory.LONG,
+        "tempo run": WorkoutCategory.TEMPO,
+        "tempo": WorkoutCategory.TEMPO,
+        "threshold": WorkoutCategory.TEMPO,
+        "interval": WorkoutCategory.INTERVAL,
+        "intervals": WorkoutCategory.INTERVAL,
+        "interval training": WorkoutCategory.INTERVAL,
+        "short intervals": WorkoutCategory.INTERVAL,
+        "long intervals": WorkoutCategory.INTERVAL,
+        "race pace intervals": WorkoutCategory.INTERVAL,
+        "fartlek": WorkoutCategory.INTERVAL,
+    }
+
+    # Mapping from phase strings to TrainingPhase enum
+    PHASE_TO_ENUM = {
+        "base": TrainingPhase.BASE,
+        "specific": TrainingPhase.BUILD,
+        "build": TrainingPhase.BUILD,
+        "peak": TrainingPhase.PEAK,
+        "taper": TrainingPhase.TAPER,
+        "recovery": TrainingPhase.RECOVERY,
+    }
+
+    @classmethod
+    def _get_category_for_workout(cls, workout_type: str) -> Optional[WorkoutCategory]:
+        """Map workout type string to WorkoutCategory."""
+        if not workout_type:
+            return None
+        return cls.WORKOUT_TYPE_TO_CATEGORY.get(workout_type.lower())
+
+    @classmethod
+    def _get_phase_enum(cls, phase: str) -> TrainingPhase:
+        """Map phase string to TrainingPhase enum."""
+        return cls.PHASE_TO_ENUM.get(phase.lower(), TrainingPhase.BUILD)
+
+    @classmethod
+    def _get_level_enum(cls, level: str) -> AthleteLevel:
+        """Map level string to AthleteLevel enum."""
+        level_map = {
+            "beginner": AthleteLevel.BEGINNER,
+            "intermediate": AthleteLevel.INTERMEDIATE,
+            "advanced": AthleteLevel.ADVANCED,
+        }
+        return level_map.get(level.lower(), AthleteLevel.INTERMEDIATE)
+
+    @classmethod
+    def _enrich_workout_with_session(
+        cls,
+        workout: Workout,
+        level: str,
+        phase: str,
+        used_session_ids: List[str] = None
+    ) -> Workout:
+        """
+        Enrich a workout with a specific session from the workout library.
+
+        This selects an appropriate pre-defined session based on workout type,
+        athlete level, and training phase, then adds detailed description and
+        structure to the workout.
+        """
+        if used_session_ids is None:
+            used_session_ids = []
+
+        # Get category for this workout type
+        category = cls._get_category_for_workout(workout.type)
+        if not category:
+            return workout
+
+        # Get appropriate session from library
+        level_enum = cls._get_level_enum(level)
+        phase_enum = cls._get_phase_enum(phase)
+
+        session = cls._workout_library.select_session(
+            category=category,
+            level=level_enum,
+            phase=phase_enum,
+            exclude_ids=used_session_ids
+        )
+
+        if not session:
+            return workout
+
+        # Enrich workout with session details
+        workout.description = f"{session.emoji} {session.name}\n{session.description}"
+
+        # Add session structure as segments if available
+        if session.structure and not workout.segments:
+            for struct in session.structure:
+                segment = WorkoutSegment(
+                    name=struct.get('segment', struct.get('name', '')),
+                    description=str(struct.get('zone', '')) + ' - ' + str(struct.get('effort', struct.get('pattern', '')))
+                )
+                if 'distance' in struct:
+                    try:
+                        dist = struct['distance']
+                        if isinstance(dist, str) and 'km' in dist:
+                            segment.distance_km = float(dist.replace('km', ''))
+                        elif isinstance(dist, (int, float)):
+                            segment.distance_km = float(dist)
+                    except (ValueError, TypeError):
+                        pass
+                if 'duration' in struct:
+                    try:
+                        dur = struct['duration']
+                        if isinstance(dur, str) and 'min' in dur:
+                            segment.duration_minutes = int(dur.replace('min', ''))
+                        elif isinstance(dur, (int, float)):
+                            segment.duration_minutes = int(dur)
+                    except (ValueError, TypeError):
+                        pass
+                if 'reps' in struct:
+                    try:
+                        reps = struct['reps']
+                        if isinstance(reps, str):
+                            reps = reps.replace('x', '').split('-')[0]
+                        segment.repetitions = int(reps)
+                    except (ValueError, TypeError):
+                        pass
+                workout.add_segment(segment)
+
+        # Add benefits and tips to description
+        if session.benefits:
+            workout.description += f"\n\n✅ Benefícios: {', '.join(session.benefits[:3])}"
+        if session.tips:
+            workout.description += f"\n💡 Dica: {session.tips[0]}"
+
+        # Store session ID for tracking
+        workout.training_zone = f"{category.value}:{session.id}"
+
+        return workout
+
+    @classmethod
+    def _enrich_week_workouts(
+        cls,
+        workouts: List[Workout],
+        level: str,
+        phase: str
+    ) -> List[Workout]:
+        """
+        Enrich all workouts in a week with sessions from the library.
+        Tracks used sessions to avoid repetition within the same week.
+        """
+        used_session_ids = []
+        enriched_workouts = []
+
+        for workout in workouts:
+            # Skip rest days
+            if workout.type.lower() == "rest":
+                enriched_workouts.append(workout)
+                continue
+
+            enriched = cls._enrich_workout_with_session(
+                workout, level, phase, used_session_ids
+            )
+
+            # Track used session if one was selected
+            if enriched.training_zone and ':' in enriched.training_zone:
+                session_id = enriched.training_zone.split(':')[1]
+                used_session_ids.append(session_id)
+
+            enriched_workouts.append(enriched)
+
+        return enriched_workouts
 
     @classmethod
     def generate_plan(
@@ -550,6 +734,9 @@ class PlanGenerator:
                     # Calculate approximate week for test race
                     # This is a simplified approach - would need start_date for exact calculation
                     pass  # Will be handled when plan has start_date set
+
+        # Enrich workouts with specific sessions from the workout library
+        workouts = cls._enrich_week_workouts(workouts, level, phase)
 
         week = Week(week_number=week_number, workouts=workouts, notes=notes)
         week.calculate_total_distance()
